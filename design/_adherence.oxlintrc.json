@@ -1,0 +1,232 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "deck-stage.js"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Hanken Grotesk))/i]",
+        "message": "Font not provided by the design system. Available: Hanken Grotesk."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {},
+    "tokens": [
+      "--bg-1",
+      "--bg-2",
+      "--bg-3",
+      "--bg-brand",
+      "--border-1",
+      "--border-2",
+      "--fg-1",
+      "--fg-2",
+      "--fg-3",
+      "--fg-accent",
+      "--fg-brand",
+      "--fg-on-brand",
+      "--font-display",
+      "--font-mono",
+      "--font-sans",
+      "--fs-body",
+      "--fs-body-lg",
+      "--fs-display",
+      "--fs-h1",
+      "--fs-h2",
+      "--fs-h3",
+      "--fs-h4",
+      "--fs-micro",
+      "--fs-small",
+      "--fw-black",
+      "--fw-bold",
+      "--fw-light",
+      "--fw-medium",
+      "--fw-regular",
+      "--fw-semibold",
+      "--lh-loose",
+      "--lh-normal",
+      "--lh-snug",
+      "--lh-tight",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--radius-xs",
+      "--rox-blue",
+      "--rox-blue-100",
+      "--rox-blue-deep",
+      "--rox-blue-soft",
+      "--rox-gold",
+      "--rox-gold-soft",
+      "--rox-gradient-brand",
+      "--rox-gradient-soft",
+      "--rox-gradient-text",
+      "--rox-ink",
+      "--rox-line",
+      "--rox-muted",
+      "--rox-muted-2",
+      "--rox-paper",
+      "--rox-paper-2",
+      "--rox-paper-3",
+      "--rox-pink",
+      "--rox-pink-100",
+      "--rox-pink-deep",
+      "--rox-pink-soft",
+      "--rox-status-ok",
+      "--rox-status-risk",
+      "--rox-status-warn",
+      "--rox-teal",
+      "--rox-teal-soft",
+      "--shadow-brand",
+      "--shadow-lg",
+      "--shadow-md",
+      "--shadow-sm",
+      "--shadow-xs",
+      "--space-0",
+      "--space-1",
+      "--space-10",
+      "--space-2",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-7",
+      "--space-8",
+      "--space-9",
+      "--tracking-caps",
+      "--tracking-normal",
+      "--tracking-tight",
+      "--tracking-wide"
+    ],
+    "tokenKinds": {
+      "--rox-pink": "color",
+      "--rox-pink-deep": "color",
+      "--rox-pink-soft": "color",
+      "--rox-pink-100": "color",
+      "--rox-blue": "color",
+      "--rox-blue-deep": "color",
+      "--rox-blue-soft": "color",
+      "--rox-blue-100": "color",
+      "--rox-gold": "color",
+      "--rox-gold-soft": "color",
+      "--rox-teal": "color",
+      "--rox-teal-soft": "color",
+      "--rox-ink": "color",
+      "--rox-paper": "color",
+      "--rox-paper-2": "color",
+      "--rox-paper-3": "color",
+      "--rox-line": "color",
+      "--rox-muted": "color",
+      "--rox-muted-2": "color",
+      "--rox-status-ok": "color",
+      "--rox-status-warn": "color",
+      "--rox-status-risk": "color",
+      "--rox-gradient-brand": "other",
+      "--rox-gradient-soft": "other",
+      "--rox-gradient-text": "font",
+      "--fg-1": "color",
+      "--fg-2": "color",
+      "--fg-3": "color",
+      "--fg-brand": "color",
+      "--fg-accent": "color",
+      "--fg-on-brand": "color",
+      "--bg-1": "color",
+      "--bg-2": "color",
+      "--bg-3": "color",
+      "--bg-brand": "color",
+      "--border-1": "color",
+      "--border-2": "color",
+      "--font-sans": "font",
+      "--font-display": "font",
+      "--font-mono": "font",
+      "--fs-display": "spacing",
+      "--fs-h1": "spacing",
+      "--fs-h2": "spacing",
+      "--fs-h3": "spacing",
+      "--fs-h4": "spacing",
+      "--fs-body-lg": "spacing",
+      "--fs-body": "spacing",
+      "--fs-small": "spacing",
+      "--fs-micro": "spacing",
+      "--lh-tight": "other",
+      "--lh-snug": "other",
+      "--lh-normal": "other",
+      "--lh-loose": "other",
+      "--fw-light": "other",
+      "--fw-regular": "other",
+      "--fw-medium": "other",
+      "--fw-semibold": "other",
+      "--fw-bold": "other",
+      "--fw-black": "other",
+      "--tracking-tight": "font",
+      "--tracking-normal": "font",
+      "--tracking-wide": "font",
+      "--tracking-caps": "font",
+      "--space-0": "spacing",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-7": "spacing",
+      "--space-8": "spacing",
+      "--space-9": "spacing",
+      "--space-10": "spacing",
+      "--radius-xs": "radius",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-pill": "radius",
+      "--shadow-xs": "shadow",
+      "--shadow-sm": "shadow",
+      "--shadow-md": "shadow",
+      "--shadow-lg": "shadow",
+      "--shadow-brand": "shadow"
+    },
+    "fontFamilies": [
+      "Hanken Grotesk"
+    ]
+  }
+}

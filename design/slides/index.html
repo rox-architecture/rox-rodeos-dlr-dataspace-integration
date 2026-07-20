@@ -1,0 +1,305 @@
+<!doctype html>
+<!-- @dsCard group="Slides" name="Slide — Cover" subtitle="8-slide deck · navigate with arrows" viewport="1280x720" -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RoX — Slide Templates</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #111; font-family: var(--font-sans); }
+  deck-stage { --slide-w: 1920; --slide-h: 1080; }
+  section.slide {
+    width: 1920px; height: 1080px; position: relative; overflow: hidden;
+    background-color: #fff; color: var(--fg-1); font-family: var(--font-sans);
+    box-sizing: border-box;
+  }
+  section.slide.bg-light  { background: url('../assets/bg-title-light.jpg')  center / cover no-repeat #fff; }
+  section.slide.bg-corner { background: url('../assets/bg-content-corner.jpg') center / cover no-repeat #fff; }
+  section.slide.bg-grad   { background: url('../assets/bg-section-gradient.jpg') center / cover no-repeat #2B418C; color: #fff; }
+
+  .slide .pad { padding: 96px 128px; height: 100%; box-sizing: border-box; }
+  .slide .footer {
+    position: absolute; left: 64px; bottom: 40px;
+    font-size: 18px; color: var(--fg-3); letter-spacing: .04em;
+  }
+  .slide .footer.on-grad { color: rgba(255,255,255,.75); }
+  .slide .page-no {
+    position: absolute; right: 64px; bottom: 40px;
+    font-size: 18px; color: var(--fg-3); font-variant-numeric: tabular-nums;
+  }
+  .slide .page-no.on-grad { color: rgba(255,255,255,.75); }
+
+  .display { font-weight: 300; font-size: 120px; line-height: 1.02; letter-spacing: -0.02em; color: var(--rox-blue-deep); }
+  .display.on-grad { color: #fff; }
+  .h1 { font-weight: 300; font-size: 72px; line-height: 1.05; letter-spacing: -0.015em; color: var(--rox-blue-deep); }
+  .h2 { font-weight: 600; font-size: 48px; line-height: 1.15; color: var(--rox-blue-deep); }
+  .h3 { font-weight: 600; font-size: 32px; line-height: 1.2; color: var(--rox-blue-deep); }
+  .eyebrow { font-size: 20px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--rox-pink); }
+  .lead   { font-size: 28px; line-height: 1.45; color: var(--fg-2); font-weight: 400; }
+  .body   { font-size: 22px; line-height: 1.5;  color: var(--fg-1); }
+  .meta   { font-size: 20px; line-height: 1.5;  color: var(--fg-3); }
+
+  /* Cover --- */
+  .cover-meta { font-size: 24px; color: var(--fg-2); margin-top: 12px; }
+  .cover-host { font-size: 22px; color: var(--fg-3); margin-top: 32px; max-width: 900px; }
+
+  /* Section divider --- */
+  .divider-stack { display: flex; flex-direction: column; gap: 4px; }
+  .divider-stack .line {
+    font-family: var(--font-display);
+    font-weight: 300; font-size: 132px; line-height: 1.0; letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .divider-stack .accent { color: #FDC300; }
+
+  /* TP Summary --- */
+  .tp-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 48px;
+    margin-top: 48px;
+  }
+  .panel {
+    background: rgba(255,255,255,.9);
+    border: 1px solid var(--border-2);
+    border-radius: 12px; padding: 32px;
+  }
+  .panel h4 {
+    margin: 0 0 14px; font-size: 14px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--rox-pink);
+  }
+  .panel ul { margin: 0; padding-left: 22px; }
+  .panel li { font-size: 20px; line-height: 1.5; margin-bottom: 6px; }
+
+  .delay-bar { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin-top: 16px; }
+  .delay-bar .cell {
+    height: 56px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 600; color: #8C8C8C; background: #F4F4F4;
+  }
+  .delay-bar .cell.is-on { background: var(--rox-pink); color: #fff; }
+
+  .status-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .status-dot { width: 14px; height: 14px; border-radius: 999px; background: var(--rox-teal); }
+
+  /* 5-col --- */
+  .cols-5 { display: grid; grid-template-columns: repeat(5,1fr); gap: 24px; margin-top: 64px; }
+  .col-card {
+    background: #fff; border: 1px solid var(--border-2); border-radius: 10px;
+    padding: 24px; min-height: 320px;
+  }
+  .col-num {
+    font-family: var(--font-display); font-weight: 300; font-size: 56px; line-height: 1;
+    background: linear-gradient(95deg,#006EB7 0%, #E61971 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .col-card h5 { margin: 12px 0 8px; font-size: 22px; color: var(--rox-blue-deep); }
+  .col-card p  { margin: 0; font-size: 16px; line-height: 1.5; color: var(--fg-2); }
+
+  /* Big quote --- */
+  .quote { font-family: var(--font-display); font-weight: 300; font-size: 76px; line-height: 1.15; letter-spacing: -0.01em; color: var(--rox-blue-deep); max-width: 1500px; }
+  .quote .accent { background: linear-gradient(95deg,#006EB7 0%, #E61971 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .quote-attr { margin-top: 36px; font-size: 22px; color: var(--fg-2); }
+
+  /* Image + text --- */
+  .imgtext { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; height: 100%; }
+  .imgtext img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
+
+  /* Chart --- */
+  .chart-wrap { display: grid; grid-template-columns: 60px 1fr; gap: 24px; margin-top: 48px; height: 600px; }
+  .yax { display: flex; flex-direction: column; justify-content: space-between; font-size: 18px; color: var(--fg-3); }
+  .bars { display: grid; grid-template-columns: repeat(6,1fr); gap: 32px; align-items: end; border-bottom: 1px solid var(--border-1); padding-bottom: 4px; }
+  .bar { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .bar .b { width: 100%; border-radius: 6px 6px 0 0; }
+  .bar .lbl { font-size: 16px; color: var(--fg-2); }
+
+  /* Impressum --- */
+  .impressum-grid { display: grid; grid-template-columns: 180px 1fr; gap: 24px 48px; margin-top: 48px; font-size: 22px; }
+  .impressum-grid .k { color: var(--rox-pink); font-weight: 600; }
+  .impressum-grid .v { color: var(--fg-1); }
+  .funding-row { display: flex; gap: 48px; align-items: center; margin-top: 80px; }
+  .funding-row img { height: 110px; }
+</style>
+</head>
+<body>
+<deck-stage>
+
+  <!-- 1. Cover -->
+  <section class="slide bg-light" data-screen-label="01 Cover">
+    <div class="pad">
+      <div style="display:flex;flex-direction:column;justify-content:center;height:100%;max-width:1300px">
+        <div class="display">RoX</div>
+        <div class="h1" style="margin-top:24px;font-weight:300">4. Konsortialtreffen</div>
+        <div class="cover-meta">18. und 19.05.2026</div>
+        <div class="cover-host">Deutsches Zentrum für Luft- und Raumfahrt e.&nbsp;V. (DLR), Ulm</div>
+      </div>
+    </div>
+    <div class="footer">RoX · Enabling AI Robotics</div>
+    <div class="page-no">01</div>
+  </section>
+
+  <!-- 2. Section divider -->
+  <section class="slide bg-grad" data-screen-label="02 Section divider">
+    <div class="pad" style="display:flex;align-items:center">
+      <div class="divider-stack">
+        <span class="line">Digital</span>
+        <span class="line">Ecosystem</span>
+        <span class="line" style="font-size:80px;color:rgba(255,255,255,.7);margin-top:8px">for AI-based</span>
+        <span class="line accent">Robotics.</span>
+      </div>
+    </div>
+    <div class="footer on-grad">02 · Section</div>
+    <div class="page-no on-grad">02</div>
+  </section>
+
+  <!-- 3. TP Summary -->
+  <section class="slide bg-corner" data-screen-label="03 TP Summary">
+    <div class="pad">
+      <div class="eyebrow">TP 04 · Wahrnehmung</div>
+      <div class="h1" style="margin-top:8px">Zusammenfassung</div>
+
+      <div class="tp-grid">
+        <div class="panel">
+          <h4>Wichtige aktuelle Themen</h4>
+          <ul>
+            <li>Multi-Sensor-Kalibrierung abgeschlossen (DLR + UStuttgart)</li>
+            <li>Domain-Adaptation-Benchmark v0.3 veröffentlicht</li>
+            <li>Workshop „Sim2Real" am 12.06.2026 in Karlsruhe</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Abhängigkeiten zu anderen Arbeitspaketen</h4>
+          <ul>
+            <li>TP 02 · Datenplattform — API-Vertrag bis 30.06.</li>
+            <li>TP 05 · Steuerung — gemeinsame Eval-Suite</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:48px">
+        <div>
+          <div class="eyebrow" style="color:var(--rox-blue-deep)">TP-Verzögerung (in Monaten)</div>
+          <div class="delay-bar">
+            <div class="cell">&gt;3M</div><div class="cell">3M</div>
+            <div class="cell">2M</div><div class="cell is-on">1M</div>
+            <div class="cell">0M</div><div class="cell">voraus</div>
+          </div>
+        </div>
+        <div>
+          <div class="eyebrow" style="color:var(--rox-blue-deep)">TP-Gesamtstatus</div>
+          <div class="status-row" style="margin-top:18px;font-size:22px"><div class="status-dot"></div> Auf Kurs · leichte Verzögerung im Daten-AP</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">© RoX Konsortium · 2026</div>
+    <div class="page-no">03</div>
+  </section>
+
+  <!-- 4. 5-column comparison -->
+  <section class="slide bg-corner" data-screen-label="04 Comparison">
+    <div class="pad">
+      <div class="eyebrow">Arbeitspakete</div>
+      <div class="h1" style="margin-top:8px">Fünf Säulen des Ökosystems</div>
+
+      <div class="cols-5">
+        <div class="col-card"><div class="col-num">01</div><h5>Datenplattform</h5><p>Skalierbare Aufnahme und Versionierung synchroner Multi-Sensor-Daten.</p></div>
+        <div class="col-card"><div class="col-num">02</div><h5>Wahrnehmung</h5><p>Robuste Perzeption über Domänengrenzen hinweg, mit Sim-to-Real-Brücke.</p></div>
+        <div class="col-card"><div class="col-num">03</div><h5>Steuerung</h5><p>Lernende Regelung mit Sicherheitsgarantien für Industriearmen.</p></div>
+        <div class="col-card"><div class="col-num">04</div><h5>Integration</h5><p>Schnittstellen, Referenzanwendungen, Test­zellen bei DLR und Partnern.</p></div>
+        <div class="col-card"><div class="col-num">05</div><h5>Transfer</h5><p>Standardisierung, Schulungen, Open-Source-Releases der Komponenten.</p></div>
+      </div>
+    </div>
+    <div class="footer">© RoX Konsortium · 2026</div>
+    <div class="page-no">04</div>
+  </section>
+
+  <!-- 5. Big quote -->
+  <section class="slide bg-light" data-screen-label="05 Big quote">
+    <div class="pad" style="display:flex;align-items:center">
+      <div>
+        <div class="eyebrow">Mission</div>
+        <div class="quote" style="margin-top:24px">A <span class="accent">digital ecosystem</span> where AI-based robots learn, adapt and cooperate across the entire industrial value chain.</div>
+        <div class="quote-attr">RoX Konsortium · Projektvision</div>
+      </div>
+    </div>
+    <div class="footer">© RoX Konsortium · 2026</div>
+    <div class="page-no">05</div>
+  </section>
+
+  <!-- 6. Image + text -->
+  <section class="slide bg-light" data-screen-label="06 Image + text">
+    <div class="pad">
+      <div class="imgtext">
+        <img src="../assets/photo-robot-arm.jpg" alt="Robot arm with optical scanner">
+        <div>
+          <div class="eyebrow">Use-Case · Inline-Qualität</div>
+          <div class="h2" style="margin-top:12px">Optische 3D-Inspektion direkt am Robotergreifer</div>
+          <div class="body" style="margin-top:20px;color:var(--fg-2)">
+            Der Roboterarm trägt ein hochpräzises Scansystem zur Inline-Qualitäts­prüfung
+            von Motorgehäusen. Die im TP&nbsp;02 entwickelte Datenpipeline streamt Punktwolken
+            in Echtzeit an die Lernschicht aus TP&nbsp;04.
+          </div>
+          <div class="status-row" style="margin-top:24px">
+            <div class="status-dot"></div>
+            <span style="font-size:20px;color:var(--fg-2)">Demonstrator läuft seit M18 bei einem Pilotpartner</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">© RoX Konsortium · 2026</div>
+    <div class="page-no">06</div>
+  </section>
+
+  <!-- 7. Bar chart -->
+  <section class="slide bg-corner" data-screen-label="07 Chart">
+    <div class="pad">
+      <div class="eyebrow">KPI · Trainingsdaten pro Quartal</div>
+      <div class="h1" style="margin-top:8px">Datenvolumen wächst auf 110&nbsp;TB</div>
+
+      <div class="chart-wrap">
+        <div class="yax">
+          <span>120</span><span>100</span><span>80</span><span>60</span><span>40</span><span>20</span><span>0</span>
+        </div>
+        <div class="bars">
+          <div class="bar"><div class="b" style="height:160px;background:#6FB0E1"></div><div class="lbl">Q1 ‘25</div></div>
+          <div class="bar"><div class="b" style="height:240px;background:#006EB7"></div><div class="lbl">Q2 ‘25</div></div>
+          <div class="bar"><div class="b" style="height:300px;background:#2B418C"></div><div class="lbl">Q3 ‘25</div></div>
+          <div class="bar"><div class="b" style="height:380px;background:#A2195B"></div><div class="lbl">Q4 ‘25</div></div>
+          <div class="bar"><div class="b" style="height:460px;background:#E61971"></div><div class="lbl">Q1 ‘26</div></div>
+          <div class="bar"><div class="b" style="height:540px;background:linear-gradient(180deg,#E61971,#FDC300)"></div><div class="lbl">Q2 ‘26</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">© RoX Konsortium · 2026</div>
+    <div class="page-no">07</div>
+  </section>
+
+  <!-- 8. Impressum -->
+  <section class="slide bg-corner" data-screen-label="08 Impressum">
+    <div class="pad">
+      <div class="eyebrow">Impressum</div>
+      <div class="h1" style="margin-top:8px">Angaben &amp; Bildrechte</div>
+
+      <div class="impressum-grid">
+        <div class="k">Thema:</div>
+        <div class="v">RoX — 4. Konsortialtreffen · Vorlagensatz</div>
+        <div class="k">Datum:</div>
+        <div class="v">2026-05-18 (JJJJ-MM-TT)</div>
+        <div class="k">Autor:</div>
+        <div class="v">Anna Alexandra Sorokina, im Auftrag des RoX-Konsortiums</div>
+        <div class="k">Bildquellen:</div>
+        <div class="v">Alle Bilder „(CC BY-NC-ND 3.0)", sofern nicht anders angegeben</div>
+      </div>
+
+      <div class="funding-row">
+        <img src="../assets/funding-eu-ngeu.png" alt="Finanziert von der Europäischen Union — NextGenerationEU">
+        <img src="../assets/funding-bmwk-small.png" alt="BMWK">
+      </div>
+    </div>
+    <div class="footer">RoX · Enabling AI Robotics</div>
+    <div class="page-no">08</div>
+  </section>
+
+</deck-stage>
+
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="../deck-stage.js"></script>
+</body>
+</html>

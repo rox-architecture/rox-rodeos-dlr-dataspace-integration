@@ -1,0 +1,233 @@
+/* ============================================================
+   RoX Design System — Colors & Typography Tokens
+   Source: RoX 4. Konsortialtreffen PPT Template (theme1.xml)
+   ============================================================ */
+
+/* Hanken Grotesk is used as a Google Fonts substitute for Aptos /
+   Aptos Display, the original template font. Aptos has very close
+   x-height, humanist proportions, and neutral terminals — Hanken
+   Grotesk matches its tone better than Inter or Roboto.        */
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* --- Brand core --------------------------------------------------- */
+  --rox-pink:        #E61971;   /* accent1 — primary magenta */
+  --rox-pink-deep:   #A2195B;   /* gradient stop, hover/active */
+  --rox-pink-soft:   #F190B2;   /* accent5 — tinted backgrounds */
+  --rox-pink-100:    #FCE6EE;   /* 10% tint */
+
+  --rox-blue:        #006EB7;   /* accent2 — primary blue */
+  --rox-blue-deep:   #2B418C;   /* dk2 — wordmark / headlines */
+  --rox-blue-soft:   #6FB0E1;   /* accent6 — tinted backgrounds */
+  --rox-blue-100:    #E6F1F9;   /* 10% tint */
+
+  /* --- Secondary palette ------------------------------------------- */
+  --rox-gold:        #FDC300;   /* accent3 — accent / status */
+  --rox-gold-soft:   #F9DC8C;
+  --rox-teal:        #00AFA5;   /* accent4 — accent / status */
+  --rox-teal-soft:   #A2CFCA;
+
+  /* --- Neutrals ---------------------------------------------------- */
+  --rox-ink:         #000000;   /* dk1 — body copy on light */
+  --rox-paper:       #FFFFFF;   /* lt1 — page */
+  --rox-paper-2:     #E8E8E8;   /* lt2 — dividers / fills */
+  --rox-paper-3:     #F4F4F4;   /* derived — surface */
+  --rox-line:        #D9D9D9;
+  --rox-muted:       #595959;   /* secondary text */
+  --rox-muted-2:     #8C8C8C;   /* tertiary / captions */
+
+  /* --- Semantic / status ------------------------------------------ */
+  --rox-status-ok:      var(--rox-teal);     /* on track / ahead */
+  --rox-status-warn:    var(--rox-gold);     /* slight delay */
+  --rox-status-risk:    var(--rox-pink);     /* delayed / blocked */
+
+  /* --- Gradients (the brand signature) ----------------------------- */
+  --rox-gradient-brand: linear-gradient(95deg, #006EB7 0%, #2B418C 28%, #A2195B 70%, #E61971 100%);
+  --rox-gradient-soft:  linear-gradient(95deg, #6FB0E1 0%, #F190B2 100%);
+  --rox-gradient-text:  linear-gradient(95deg, #006EB7 0%, #E61971 100%);
+
+  /* --- Foreground / background semantics --------------------------- */
+  --fg-1: var(--rox-ink);              /* primary text */
+  --fg-2: var(--rox-muted);            /* secondary text */
+  --fg-3: var(--rox-muted-2);          /* tertiary, captions, meta */
+  --fg-brand: var(--rox-blue-deep);    /* headings, wordmark blue */
+  --fg-accent: var(--rox-pink);        /* links, key numbers */
+  --fg-on-brand: var(--rox-paper);     /* text on gradient/blue */
+
+  --bg-1: var(--rox-paper);            /* canvas */
+  --bg-2: var(--rox-paper-3);          /* surfaces, cards */
+  --bg-3: var(--rox-paper-2);          /* sunken */
+  --bg-brand: var(--rox-blue-deep);
+
+  --border-1: var(--rox-line);
+  --border-2: var(--rox-paper-2);
+
+  /* --- Type system ------------------------------------------------- */
+  --font-sans: 'Hanken Grotesk', 'Aptos', 'Aptos Display', 'Segoe UI',
+               system-ui, -apple-system, sans-serif;
+  --font-display: 'Hanken Grotesk', 'Aptos Display', 'Aptos', 'Segoe UI',
+                  system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* Type scale — deck-first, scales down to UI */
+  --fs-display: 88px;   /* big cover titles */
+  --fs-h1:      48px;
+  --fs-h2:      36px;
+  --fs-h3:      28px;
+  --fs-h4:      22px;
+  --fs-body-lg: 20px;
+  --fs-body:    16px;
+  --fs-small:   14px;
+  --fs-micro:   12px;
+
+  --lh-tight:  1.05;
+  --lh-snug:   1.2;
+  --lh-normal: 1.4;
+  --lh-loose:  1.6;
+
+  /* Weights — Hanken Grotesk supports 300–800 */
+  --fw-light:    300;
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-black:    800;
+
+  --tracking-tight:  -0.015em;
+  --tracking-normal: 0;
+  --tracking-wide:    0.04em;
+  --tracking-caps:    0.08em;
+
+  /* --- Spacing scale (4px base) ------------------------------------ */
+  --space-0:  0px;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+  --space-9:  96px;
+  --space-10: 128px;
+
+  /* --- Radii — slight rounding, never pill except for chips ------- */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* --- Shadows — flat editorial style, very restrained ------------ */
+  --shadow-xs:  0 1px 2px rgba(15, 26, 60, 0.06);
+  --shadow-sm:  0 2px 6px rgba(15, 26, 60, 0.08);
+  --shadow-md:  0 8px 24px rgba(15, 26, 60, 0.10);
+  --shadow-lg:  0 24px 60px rgba(15, 26, 60, 0.14);
+  --shadow-brand: 0 16px 40px rgba(230, 25, 113, 0.20);
+}
+
+/* ============================================================
+   Semantic typography classes
+   ============================================================ */
+
+body, .rox-body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--fg-1);
+  font-weight: var(--fw-regular);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.rox-display {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-light);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-brand);
+}
+
+.rox-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-light);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-brand);
+}
+
+.rox-h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-brand);
+}
+
+.rox-h3 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-brand);
+}
+
+.rox-h4 {
+  font-family: var(--font-sans);
+  font-size: var(--fs-h4);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-semibold);
+  color: var(--fg-1);
+}
+
+.rox-eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-accent);
+}
+
+.rox-lead {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body-lg);
+  line-height: var(--lh-normal);
+  color: var(--fg-2);
+  font-weight: var(--fw-regular);
+}
+
+.rox-p {
+  font-size: var(--fs-body);
+  line-height: var(--lh-normal);
+  color: var(--fg-1);
+}
+
+.rox-small {
+  font-size: var(--fs-small);
+  line-height: var(--lh-normal);
+  color: var(--fg-2);
+}
+
+.rox-caption {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-normal);
+  color: var(--fg-3);
+  letter-spacing: var(--tracking-wide);
+}
+
+.rox-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+}
+
+.rox-gradient-text {
+  background: var(--rox-gradient-text);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+}

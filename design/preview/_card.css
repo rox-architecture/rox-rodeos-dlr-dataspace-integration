@@ -1,0 +1,10 @@
+/* shared card chrome for preview/ */
+@import url('../colors_and_type.css');
+html, body { margin: 0; padding: 0; background: #fff; font-family: var(--font-sans); color: var(--fg-1); }
+.card { padding: 24px; box-sizing: border-box; }
+.row { display: flex; gap: 12px; align-items: stretch; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); font-weight: 600; }
+.mono { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); }
+.swatch { border-radius: 8px; flex: 1; aspect-ratio: 1; min-height: 64px; display: flex; flex-direction: column; justify-content: flex-end; padding: 10px; color: #fff; font-size: 11px; font-weight: 600; box-sizing: border-box; }
+.swatch .hex { font-family: var(--font-mono); font-weight: 500; opacity: .85; margin-top: 2px; }
