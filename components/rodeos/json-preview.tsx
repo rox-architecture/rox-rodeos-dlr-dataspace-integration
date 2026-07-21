@@ -5,9 +5,11 @@ import {
   CheckIcon,
   CopyIcon,
   DownloadIcon,
+  Globe2Icon,
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,6 +22,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
+
+const DATASPACE_DASHBOARD_URL =
+  "https://vision-x-dataspace.base-x-ecosystem.org/#/dashboard"
+
+interface RegisterResult {
+  filename: string
+  connector: string
+  policySource: string
+}
 
 export function JsonPreview({
   data,
@@ -33,9 +45,30 @@ export function JsonPreview({
   invalidCount: number
 }) {
   const [copied, setCopied] = React.useState(false)
+  const [dataspaceConfigured, setDataspaceConfigured] = React.useState<
+    boolean | null
+  >(null)
+  const [registering, setRegistering] = React.useState(false)
+  const [registerError, setRegisterError] = React.useState<string | null>(null)
+  const [lastRegistration, setLastRegistration] = React.useState<
+    (RegisterResult & { json: string }) | null
+  >(null)
+
   const json = JSON.stringify(data, null, 2)
   const complete = missingMandatory.length === 0 && invalidCount === 0
   const hasContent = Object.keys(data).length > 0
+
+  React.useEffect(() => {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((cfg) => setDataspaceConfigured(Boolean(cfg.dataspaceConfigured)))
+      .catch(() => setDataspaceConfigured(false))
+  }, [])
+
+  // The success state is only shown while the instance is unchanged since
+  // registration — editing the form invalidates it.
+  const registered =
+    lastRegistration && lastRegistration.json === json ? lastRegistration : null
 
   const copy = async () => {
     await navigator.clipboard.writeText(json)
@@ -54,6 +87,28 @@ export function JsonPreview({
     a.download = `${title || "rodeos_semantic_instance"}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const register = async () => {
+    setRegistering(true)
+    setRegisterError(null)
+    try {
+      const res = await fetch("/api/dataspace/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instance: data }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? `Registration failed (${res.status})`)
+      setLastRegistration({ ...(body as RegisterResult), json })
+      toast.success(`Asset "${body.filename}" registered in the dataspace`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setRegisterError(message)
+      toast.error(message)
+    } finally {
+      setRegistering(false)
+    }
   }
 
   return (
@@ -120,7 +175,7 @@ export function JsonPreview({
           </div>
         )}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex flex-col gap-2">
         <Button
           className="w-full bg-(--rox-blue-deep) text-white hover:bg-(--rox-blue) dark:bg-(--rox-blue-soft) dark:text-(--rox-blue-deep) dark:hover:bg-(--rox-blue-100)"
           size="lg"
@@ -130,6 +185,68 @@ export function JsonPreview({
           <DownloadIcon data-icon="inline-start" />
           Download semantic model (JSON)
         </Button>
+
+        <Button
+          className="w-full bg-(--rox-teal) text-white hover:bg-[#008f87] disabled:bg-(--rox-teal)/60"
+          size="lg"
+          onClick={register}
+          disabled={
+            !hasContent || !complete || registering || dataspaceConfigured === false
+          }
+          title={
+            !complete
+              ? "All mandatory fields must be valid before registering"
+              : undefined
+          }
+        >
+          {registering ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <Globe2Icon data-icon="inline-start" />
+          )}
+          {registering ? "Registering…" : "Register asset in Data Space"}
+        </Button>
+
+        {registerError && (
+          <p className="w-full rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs leading-relaxed text-destructive">
+            {registerError}
+          </p>
+        )}
+
+        {dataspaceConfigured === false && (
+          <p className="text-xs text-muted-foreground">
+            Dataspace access is not configured — set{" "}
+            <code className="font-mono">DATASPACE_API_KEY</code> and{" "}
+            <code className="font-mono">DATASPACE_CONNECTOR</code> in the .env
+            file.
+          </p>
+        )}
+
+        {registered && (
+          <div className="w-full rounded-lg border border-(--rox-teal)/40 bg-(--rox-teal)/5 p-3 text-xs leading-relaxed">
+            <p className="inline-flex items-center gap-1 font-medium text-(--rox-teal)">
+              <CheckIcon className="size-3.5" />
+              Registered as &quot;{registered.filename}&quot; via connector{" "}
+              {registered.connector}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Policy: {registered.policySource === "env"
+                ? "configured via .env"
+                : registered.policySource === "existing"
+                  ? "existing connector policy"
+                  : "default policy created"}{" "}
+              ·{" "}
+              <a
+                href={DATASPACE_DASHBOARD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-(--rox-blue) underline-offset-4 hover:underline"
+              >
+                Open dataspace dashboard
+              </a>
+            </p>
+          </div>
+        )}
       </CardFooter>
     </Card>
   )
