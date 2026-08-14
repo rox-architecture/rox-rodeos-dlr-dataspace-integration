@@ -101,7 +101,23 @@ export async function POST(request: Request) {
     await uploadJsonFile(config, filename, JSON.stringify(instance, null, 2))
     const policies = await resolvePolicies(config)
     await createOffer(config, filename, policies, {
-      name: title,
+      // Every field of the semantic model instance becomes a top-level
+      // asset property (e.g. "rodeos:payload": 10.5), so assets are
+      // searchable by their semantic metadata in the dataspace catalog.
+      // Note: keys whose prefix is in the EDC JSON-LD context (e.g.
+      // "dcat:keyword") are stored under their expanded IRI.
+      ...instance,
+      // Untouched nested copy for lossless retrieval of the instance.
+      rodeosInstance: instance,
+      // Curated display properties used by the dataspace dashboard —
+      // listed last so they always win over instance keys. The dashboard
+      // links the uploaded file to this asset via "filename", and its Edit
+      // dialog additionally requires "name" to equal the filename (native
+      // dataspace assets follow the same convention); the human-readable
+      // title stays available in dcterms:title/title.
+      filename,
+      name: filename,
+      title,
       description,
       offerType: "data",
       contenttype: "application/json",

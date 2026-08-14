@@ -113,6 +113,20 @@ operated by the DLR Institute for AI Safety and Security):
    name, description, `offerType: data` and RODEOS metadata, making the asset
    visible in the federated catalog.
 
+The **entire semantic model instance is attached as asset properties**: every
+field becomes a top-level property (e.g. `rodeos:payload`, `dcterms:title`),
+so assets can be found via the catalog's metadata search and query filters
+(e.g. `rodeos:payload > 5`). A lossless nested copy is additionally stored
+under `rodeosInstance`. Keys whose prefix is part of the EDC JSON-LD context
+(e.g. `dcat:keyword`) are stored under their expanded IRI
+(`http://www.w3.org/ns/dcat#keyword`) — a property of the underlying EDC
+connector, not of this app. Two properties follow dashboard conventions and
+must always be present: `filename` links the asset to the uploaded file (the
+dashboard's asset list is file-based and matches via this property), and
+`name` must **equal the filename** — the dashboard's *Edit Asset* dialog only
+links file and asset when they match. The human-readable title is kept in
+`title` and `dcterms:title`.
+
 Setup: create an API key in the dataspace, set `DATASPACE_API_KEY` and
 `DATASPACE_CONNECTOR` in `.env` and restart the app. The button stays
 disabled (with a hint) until both are configured and reports the created
