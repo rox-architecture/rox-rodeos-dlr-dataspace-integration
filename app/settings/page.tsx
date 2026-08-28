@@ -30,7 +30,7 @@ export default function SettingsPage() {
             The AI autofill runs against these endpoints. Anything speaking the
             OpenAI protocol works — the IONOS AI Model Hub, OpenAI, a local
             vLLM or LM Studio server, or an internal gateway. Add the endpoint
-            URL and your key here instead of editing the .env file.
+            URL and your key here instead of editing the server environment.
           </p>
         </div>
 

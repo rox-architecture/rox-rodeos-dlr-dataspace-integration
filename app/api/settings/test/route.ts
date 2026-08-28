@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       {
         ok: false,
         message:
-          "Settings are locked (RODEOS_SETTINGS_LOCKED=true) — only providers configured in the .env file can be tested.",
+          "Settings are locked (RODEOS_SETTINGS_LOCKED=true) — only providers configured in the server environment can be tested.",
         models: [],
       },
       { status: 403 }

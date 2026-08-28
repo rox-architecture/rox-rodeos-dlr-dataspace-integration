@@ -237,7 +237,7 @@ export function SettingsForm() {
           <LockIcon className="size-4 shrink-0 text-(--rox-gold)" />
           Settings are locked on this deployment
           (<code className="font-mono">RODEOS_SETTINGS_LOCKED=true</code>) — the
-          providers come from the .env file and cannot be changed here.
+          providers come from the server environment and cannot be changed here.
         </p>
       )}
 

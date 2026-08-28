@@ -228,8 +228,8 @@ export function JsonPreview({
           <p className="text-xs text-muted-foreground">
             Dataspace access is not configured — set{" "}
             <code className="font-mono">DATASPACE_API_KEY</code> and{" "}
-            <code className="font-mono">DATASPACE_CONNECTOR</code> in the .env
-            file.
+            <code className="font-mono">DATASPACE_CONNECTOR</code> in the
+            server environment.
           </p>
         )}
 

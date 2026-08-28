@@ -54,7 +54,7 @@ export async function PUT(request: Request) {
     return Response.json(
       {
         error:
-          "Settings are locked (RODEOS_SETTINGS_LOCKED=true). Configure the providers via the .env file instead.",
+          "Settings are locked (RODEOS_SETTINGS_LOCKED=true). Configure the providers through the server environment instead.",
       },
       { status: 403 }
     )

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the .env file.",
+          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
       },
       { status: 503 }
     )
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         {
           error: `Connector "${config.connector}" not found. Your API key has access to: ${
             available.join(", ") || "none"
-          }. Check DATASPACE_CONNECTOR in the .env file.`,
+          }. Check DATASPACE_CONNECTOR in the server environment.`,
         },
         { status: 400 }
       )
