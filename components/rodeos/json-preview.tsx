@@ -6,6 +6,7 @@ import {
   CopyIcon,
   DownloadIcon,
   Globe2Icon,
+  PackageIcon,
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react"
@@ -23,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
+import { buildKitMetadata, describeKitMetadata } from "@/lib/kit-metadata"
 
 const DATASPACE_DASHBOARD_URL =
   "https://vision-x-dataspace.base-x-ecosystem.org/#/dashboard"
@@ -31,6 +33,7 @@ interface RegisterResult {
   filename: string
   connector: string
   policySource: string
+  kitMetadata: string
 }
 
 export function JsonPreview({
@@ -57,6 +60,8 @@ export function JsonPreview({
   const json = JSON.stringify(data, null, 2)
   const complete = missingMandatory.length === 0 && invalidCount === 0
   const hasContent = Object.keys(data).length > 0
+  // What a KIT builder will read from the registered asset.
+  const kit = React.useMemo(() => buildKitMetadata(data), [data])
 
   React.useEffect(() => {
     fetch("/api/config")
@@ -135,6 +140,12 @@ export function JsonPreview({
               <SparklesIcon className="size-3.5" />
               {suggested.length} AI suggestion{suggested.length === 1 ? "" : "s"} to
               verify
+            </span>
+          )}
+          {kit && (
+            <span className="inline-flex items-center gap-1">
+              <PackageIcon className="size-3.5" />
+              KIT metadata: {describeKitMetadata(kit)}
             </span>
           )}
         </CardDescription>
@@ -228,6 +239,9 @@ export function JsonPreview({
               <CheckIcon className="size-3.5" />
               Registered as &quot;{registered.filename}&quot; via connector{" "}
               {registered.connector}
+            </p>
+            <p className="text-muted-foreground">
+              KIT metadata: {registered.kitMetadata}
             </p>
             <p className="mt-1 text-muted-foreground">
               Policy: {registered.policySource === "env"

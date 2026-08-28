@@ -22,12 +22,16 @@ import { Separator } from "@/components/ui/separator"
 import { FieldInput } from "@/components/rodeos/field-input"
 import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-panel"
 import { JsonPreview } from "@/components/rodeos/json-preview"
+import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
   collectFieldsForPath,
   computeLevels,
   instanceLabel,
+  OPERATIONAL_AXIS,
   parseFieldType,
   pathKey,
+  sanitizePath,
+  SEMANTIC_AXIS,
   validateField,
   type FieldMap,
   type Level,
@@ -35,6 +39,7 @@ import {
 
 export interface ApplySummary {
   path: string[]
+  operationalPath: string[]
   applied: string[]
   suggested: string[]
   skipped: string[]
@@ -44,12 +49,34 @@ type RawValues = Record<string, unknown>
 
 function toRawValue(fieldType: string, value: unknown): unknown {
   const parsed = parseFieldType(fieldType)
+  if (parsed.kind === "requirement") {
+    return Array.isArray(value) ? value : []
+  }
+  if (parsed.kind === "jsonOrUri") {
+    return typeof value === "string" ? value : JSON.stringify(value, null, 2)
+  }
   if (parsed.kind === "boolean" && !parsed.isList) {
     if (typeof value === "boolean") return value
     return String(value).toLowerCase() === "true"
   }
+  if (parsed.kind === "enum" && parsed.isList) {
+    return Array.isArray(value) ? value.map(String) : [String(value)]
+  }
   if (parsed.isList && Array.isArray(value)) return value.join(", ")
   return String(value)
+}
+
+/** Merge the mandatory/optional/default field maps of a level chain. */
+function mergeLevels(levels: Level[]) {
+  const mandatory: FieldMap = {}
+  const optional: FieldMap = {}
+  const defaults: Record<string, string> = {}
+  for (const level of levels) {
+    Object.assign(mandatory, level.node.mandatory ?? {})
+    Object.assign(optional, level.node.optional ?? {})
+    Object.assign(defaults, level.node.defaultValues ?? {})
+  }
+  return { mandatory, optional, defaults }
 }
 
 export function ModelForm() {
@@ -61,30 +88,44 @@ export function ModelForm() {
     new Set()
   )
 
-  const levels = React.useMemo(
-    () => computeLevels(values, selections),
+  // The two axes: what the asset is, and how it is delivered.
+  const semanticLevels = React.useMemo(
+    () => computeLevels(values, selections, SEMANTIC_AXIS),
+    [values, selections]
+  )
+  const operationalLevels = React.useMemo(
+    () => computeLevels(values, selections, OPERATIONAL_AXIS),
     [values, selections]
   )
 
-  // Fields visible on the active path, in level order.
+  // Fields visible on both active paths, in level order.
   const visibleFields = React.useMemo(() => {
-    const mandatory: FieldMap = {}
-    const optional: FieldMap = {}
-    const defaults: Record<string, string> = {}
-    for (const level of levels) {
-      Object.assign(mandatory, level.node.mandatory ?? {})
-      Object.assign(optional, level.node.optional ?? {})
-      Object.assign(defaults, level.node.defaultValues ?? {})
+    const semantic = mergeLevels(semanticLevels)
+    const operational = mergeLevels(operationalLevels)
+    return {
+      mandatory: { ...semantic.mandatory, ...operational.mandatory },
+      optional: { ...semantic.optional, ...operational.optional },
+      defaults: { ...semantic.defaults, ...operational.defaults },
     }
-    return { mandatory, optional, defaults }
-  }, [levels])
+  }, [semanticLevels, operationalLevels])
 
-  // Model-declared defaultValues act as fallbacks for untouched fields;
-  // any user input (including clearing a field) takes precedence.
-  const effectiveValues = React.useMemo<RawValues>(
-    () => ({ ...visibleFields.defaults, ...values }),
+  // Operational fields the semantic axis already answers (file size, format,
+  // contact …). They behave like model defaults: a fallback the user can
+  // always overrule.
+  const derived = React.useMemo(
+    () => deriveOperationalValues({ ...visibleFields.defaults, ...values }),
     [visibleFields, values]
   )
+
+  // Model-declared defaultValues and derivations act as fallbacks for
+  // untouched fields; any user input (including clearing a field) wins.
+  const effectiveValues = React.useMemo<RawValues>(() => {
+    const merged: RawValues = { ...visibleFields.defaults }
+    for (const [name, entry] of Object.entries(derived)) {
+      merged[name] = entry.value
+    }
+    return { ...merged, ...values }
+  }, [visibleFields, derived, values])
 
   // Validate all visible fields and build the output document.
   const { output, errors, missingMandatory } = React.useMemo(() => {
@@ -148,7 +189,27 @@ export function ModelForm() {
     (result: AutofillResponse): ApplySummary => {
       const path = result.path
       const fields = collectFieldsForPath(path)
-      const known = { ...fields.mandatory, ...fields.optional }
+
+      // The operational axis is auto-selected by rodeos:operationalType, so
+      // its path follows from the value the model proposed.
+      const proposedType =
+        result.values?.["rodeos:operationalType"] ??
+        result.suggestions?.["rodeos:operationalType"]
+      const operationalPath =
+        typeof proposedType === "string" && proposedType
+          ? sanitizePath([`rodeos:${proposedType}`], OPERATIONAL_AXIS)
+          : []
+      const operationalFields = collectFieldsForPath(
+        operationalPath,
+        OPERATIONAL_AXIS
+      )
+
+      const known = {
+        ...fields.mandatory,
+        ...fields.optional,
+        ...operationalFields.mandatory,
+        ...operationalFields.optional,
+      }
 
       const nextValues: RawValues = {}
       const nextSelections: Record<string, string> = {}
@@ -192,38 +253,52 @@ export function ModelForm() {
         suggestedNames.push(name)
       }
 
-      // Model defaults for the chosen path (unless the LLM provided a value).
-      for (const [name, def] of Object.entries(fields.defaults)) {
+      // Model defaults for the chosen paths (unless the LLM provided a value).
+      for (const [name, def] of Object.entries({
+        ...fields.defaults,
+        ...operationalFields.defaults,
+      })) {
         if (nextValues[name] === undefined) nextValues[name] = def
       }
 
       setValues(nextValues)
       setSelections(nextSelections)
       setSuggested(new Set(suggestedNames))
-      return { path, applied, suggested: suggestedNames, skipped }
+      return {
+        path,
+        operationalPath,
+        applied,
+        suggested: suggestedNames,
+        skipped,
+      }
     },
     []
   )
 
+  const onSelectChild = React.useCallback((level: Level, child: string) => {
+    setSelections((prev) => ({
+      ...prev,
+      [pathKey(level.path, level.axis)]: child,
+    }))
+  }, [])
+
+  const allLevels = [...semanticLevels, ...operationalLevels]
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,38rem)]">
       <div className="flex min-w-0 flex-col gap-4">
-        {levels.map((level, i) => (
+        {allLevels.map((level, i) => (
           <LevelCard
-            key={pathKey(level.path) || "root"}
+            key={`${level.axis}-${pathKey(level.path) || "root"}`}
             level={level}
             index={i}
             values={effectiveValues}
             errors={errors}
             missing={missingSet}
             suggested={suggested}
+            derived={derived}
             onFieldChange={setField}
-            onSelectChild={(child) =>
-              setSelections((prev) => ({
-                ...prev,
-                [pathKey(level.path)]: child,
-              }))
-            }
+            onSelectChild={(child) => onSelectChild(level, child)}
           />
         ))}
         <div>
@@ -254,6 +329,7 @@ function LevelCard({
   errors,
   missing,
   suggested,
+  derived,
   onFieldChange,
   onSelectChild,
 }: {
@@ -263,31 +339,79 @@ function LevelCard({
   errors: Record<string, string>
   missing: ReadonlySet<string>
   suggested: ReadonlySet<string>
+  derived: Record<string, { value: unknown; source: string }>
   onFieldChange: (name: string, raw: unknown) => void
   onSelectChild: (child: string) => void
 }) {
   const statusOf = (name: string): "suggested" | "missing" | undefined =>
     suggested.has(name) ? "suggested" : missing.has(name) ? "missing" : undefined
+  // The hint only applies while the user has not overridden the value.
+  const derivedFrom = (name: string): string | undefined =>
+    values[name] === derived[name]?.value ? derived[name]?.source : undefined
   const [showOptional, setShowOptional] = React.useState(false)
-  const mandatory = Object.entries(level.node.mandatory ?? {})
-  const optional = Object.entries(level.node.optional ?? {})
+  const isOperational = level.axis === "operational"
   const isRoot = level.path.length === 0
 
+  // Requirement editors are rows of controls — they get the full card width
+  // instead of a cell in the field grid.
+  const split = (entries: Array<[string, string]>) => {
+    const grid: Array<[string, string]> = []
+    const wide: Array<[string, string]> = []
+    for (const entry of entries) {
+      ;(parseFieldType(entry[1]).kind === "requirement" ? wide : grid).push(entry)
+    }
+    return { grid, wide }
+  }
+
+  const mandatory = split(Object.entries(level.node.mandatory ?? {}))
+  const optional = split(Object.entries(level.node.optional ?? {}))
+  const optionalCount = optional.grid.length + optional.wide.length
+
   const title = isRoot
-    ? "Basic resource information"
+    ? isOperational
+      ? "Operational profile (KIT metadata)"
+      : "Basic resource information"
     : instanceLabel(level.path[level.path.length - 1])
-  const breadcrumb = level.path.map(instanceLabel).join(" → ")
+  // Only useful once it says more than the card title does.
+  const breadcrumb =
+    level.path.length > 1 ? level.path.map(instanceLabel).join(" → ") : ""
+
+  const renderField = ([name, type]: [string, string], required: boolean) => (
+    <FieldInput
+      key={name}
+      name={name}
+      fieldType={type}
+      required={required}
+      value={values[name]}
+      error={errors[name]}
+      status={statusOf(name)}
+      derivedFrom={derivedFrom(name)}
+      onChange={(raw) => onFieldChange(name, raw)}
+    />
+  )
 
   return (
-    <Card>
+    <Card className={isOperational ? "border-(--rox-teal)/40" : undefined}>
       <CardHeader>
-        <CardTitle className="flex items-baseline gap-2 text-(--rox-blue-deep) dark:text-(--rox-blue-soft)">
+        <CardTitle
+          className={
+            isOperational
+              ? "flex items-baseline gap-2 text-(--rox-teal)"
+              : "flex items-baseline gap-2 text-(--rox-blue-deep) dark:text-(--rox-blue-soft)"
+          }
+        >
           <span className="font-mono text-xs text-(--rox-pink)">
             {String(index + 1).padStart(2, "0")}
           </span>
           {title}
         </CardTitle>
-        {isRoot ? (
+        {isRoot && isOperational ? (
+          <CardDescription>
+            How the asset is delivered and invoked — independent of what it is.
+            KIT builders compose assets from these fields. A physical component
+            is catalogued as its description, i.e. a static file.
+          </CardDescription>
+        ) : isRoot ? (
           <CardDescription>
             Mandatory DCAT resource metadata — the core type determines all
             further steps.
@@ -299,54 +423,38 @@ function LevelCard({
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {mandatory.length > 0 && (
+        {mandatory.grid.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {mandatory.map(([name, type]) => (
-              <FieldInput
-                key={name}
-                name={name}
-                fieldType={type}
-                required
-                value={values[name]}
-                error={errors[name]}
-                status={statusOf(name)}
-                onChange={(raw) => onFieldChange(name, raw)}
-              />
-            ))}
+            {mandatory.grid.map((entry) => renderField(entry, true))}
           </div>
         )}
+        {mandatory.wide.map((entry) => renderField(entry, true))}
 
-        {optional.length > 0 && (
+        {optionalCount > 0 && (
           <div className="flex flex-col gap-4">
             <button
               type="button"
               onClick={() => setShowOptional((v) => !v)}
               className="w-fit text-left text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase transition-colors hover:text-foreground"
             >
-              {showOptional ? "− Hide" : "+ Show"} optional fields ({optional.length})
+              {showOptional ? "− Hide" : "+ Show"} optional fields ({optionalCount})
             </button>
             {showOptional && (
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {optional.map(([name, type]) => (
-                  <FieldInput
-                    key={name}
-                    name={name}
-                    fieldType={type}
-                    required={false}
-                    value={values[name]}
-                    error={errors[name]}
-                    status={statusOf(name)}
-                    onChange={(raw) => onFieldChange(name, raw)}
-                  />
-                ))}
-              </div>
+              <>
+                {optional.grid.length > 0 && (
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                    {optional.grid.map((entry) => renderField(entry, false))}
+                  </div>
+                )}
+                {optional.wide.map((entry) => renderField(entry, false))}
+              </>
             )}
           </div>
         )}
 
         {level.selectionOptions && (
           <>
-            {(mandatory.length > 0 || optional.length > 0) && <Separator />}
+            {(mandatory.grid.length > 0 || optionalCount > 0) && <Separator />}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">
                 Sub-type
@@ -360,7 +468,11 @@ function LevelCard({
                   className="w-full sm:w-1/2 xl:w-1/3"
                   aria-invalid={!level.selectedChild}
                 >
-                  <SelectValue placeholder="Choose the specific type…" />
+                  <SelectValue placeholder="Choose the specific type…">
+                    {(key: string | null) =>
+                      key ? instanceLabel(key) : "Choose the specific type…"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {level.selectionOptions.map((option) => (

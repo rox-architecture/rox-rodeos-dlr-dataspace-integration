@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { SparklesIcon } from "lucide-react"
+import Link from "next/link"
+import { SettingsIcon, SparklesIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -33,15 +34,21 @@ export interface AutofillResponse {
   values: Record<string, unknown>
   suggestions: Record<string, unknown>
   provider: string
+  providerId: string
   model: string
 }
 
+interface ProviderInfo {
+  id: string
+  label: string
+  kind: "openai" | "openrouter" | "ollama"
+  model: string
+  hasApiKey: boolean
+}
+
 interface AppConfig {
-  provider: "openrouter" | "ollama"
-  openrouterModel: string
-  ollamaModel: string
-  ollamaBaseUrl: string
-  hasOpenrouterKey: boolean
+  providers: ProviderInfo[]
+  defaultProviderId: string
 }
 
 export function AssistPanel({
@@ -50,7 +57,7 @@ export function AssistPanel({
   onApply: (result: AutofillResponse) => ApplySummary
 }) {
   const [config, setConfig] = React.useState<AppConfig | null>(null)
-  const [provider, setProvider] = React.useState<"openrouter" | "ollama">("openrouter")
+  const [provider, setProvider] = React.useState("")
   const [model, setModel] = React.useState("")
   const [text, setText] = React.useState("")
   const [loading, setLoading] = React.useState(false)
@@ -64,17 +71,21 @@ export function AssistPanel({
       .then((r) => r.json())
       .then((cfg: AppConfig) => {
         setConfig(cfg)
-        setProvider(cfg.provider)
-        setModel(cfg.provider === "ollama" ? cfg.ollamaModel : cfg.openrouterModel)
+        const active =
+          cfg.providers.find((p) => p.id === cfg.defaultProviderId) ??
+          cfg.providers[0]
+        setProvider(active?.id ?? "")
+        setModel(active?.model ?? "")
       })
       .catch(() => setError("Could not load LLM configuration"))
   }, [])
 
-  const switchProvider = (p: "openrouter" | "ollama") => {
-    setProvider(p)
-    if (config) {
-      setModel(p === "ollama" ? config.ollamaModel : config.openrouterModel)
-    }
+  const activeProvider = config?.providers.find((p) => p.id === provider) ?? null
+
+  const switchProvider = (id: string) => {
+    setProvider(id)
+    const next = config?.providers.find((p) => p.id === id)
+    if (next) setModel(next.model)
   }
 
   const run = async () => {
@@ -141,15 +152,23 @@ export function AssistPanel({
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Provider</Label>
             <Select
-              value={provider}
-              onValueChange={(v) => v && switchProvider(v as "openrouter" | "ollama")}
+              value={provider || null}
+              onValueChange={(v) => v && switchProvider(v)}
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Select…">
+                  {(id: string | null) =>
+                    config?.providers.find((p) => p.id === id)?.label ??
+                    "Select…"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="openrouter">OpenRouter</SelectItem>
-                <SelectItem value="ollama">Ollama (local)</SelectItem>
+                {(config?.providers ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -163,12 +182,25 @@ export function AssistPanel({
           </div>
         </div>
 
-        {provider === "openrouter" && config && !config.hasOpenrouterKey && (
-          <p className="text-xs text-(--rox-pink)">
-            No OPENROUTER_API_KEY configured — add it to the .env file or switch
-            to Ollama.
-          </p>
-        )}
+        {activeProvider &&
+          activeProvider.kind !== "ollama" &&
+          !activeProvider.hasApiKey && (
+            <p className="text-xs text-(--rox-pink)">
+              No API key configured for {activeProvider.label} — add one under{" "}
+              <Link href="/settings" className="underline underline-offset-2">
+                Settings
+              </Link>
+              .
+            </p>
+          )}
+
+        <Link
+          href="/settings"
+          className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          <SettingsIcon className="size-3" />
+          Manage providers and endpoints
+        </Link>
 
         <Button onClick={run} disabled={loading || !text.trim()}>
           {loading ? (
@@ -191,6 +223,12 @@ export function AssistPanel({
               {summary.path.length
                 ? summary.path.map(instanceLabel).join(" → ")
                 : "no hierarchy match"}
+            </p>
+            <p>
+              <span className="text-muted-foreground">Delivered as:</span>{" "}
+              {summary.operationalPath.length
+                ? summary.operationalPath.map(instanceLabel).join(" → ")
+                : "no operational type proposed"}
             </p>
             <p>
               <span className="text-muted-foreground">Fields filled:</span>{" "}

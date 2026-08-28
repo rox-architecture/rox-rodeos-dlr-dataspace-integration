@@ -1,11 +1,22 @@
 import rawModel from "@/semantic_model.json"
+import rawOperationalModel from "@/operational_model.json"
 
 /**
- * The semantic model (semantic_model.json at the repository root) is the
- * single source of truth for every form the app renders. Nothing about the
- * hierarchy or the fields is hard-coded here beyond the two auto-selection
- * rules the model itself encodes via enum fields (rodeos:coreType and
- * rodeos:componentType).
+ * The models (semantic_model.json and operational_model.json at the
+ * repository root) are the single source of truth for every form the app
+ * renders. Nothing about the hierarchies or the fields is hard-coded here
+ * beyond the auto-selection rules the models themselves encode via enum
+ * fields (rodeos:coreType, rodeos:componentType, rodeos:operationalType).
+ *
+ * Two orthogonal axes describe an asset:
+ *
+ *   semantic    — dcat:Resource → what the asset *is* (a 6-DOF robot arm)
+ *   operational — rodeos:OperationalProfile → how it is *delivered and
+ *                 invoked* (a container image for linux/amd64)
+ *
+ * They are deliberately independent: a rodeos:Dataset can be shipped as a
+ * static file, a file service or a stream, so the operational type cannot be
+ * derived from rodeos:coreType. Both axes feed one flat instance document.
  */
 
 export type FieldMap = Record<string, string>
@@ -21,10 +32,42 @@ export type SemanticModel = {
   "dcat:Resource": ModelNode
 } & Record<string, unknown>
 
+export type OperationalModel = {
+  "rodeos:OperationalProfile": ModelNode
+} & Record<string, unknown>
+
 export const semanticModel = rawModel as unknown as SemanticModel
+export const operationalModel =
+  rawOperationalModel as unknown as OperationalModel
 
 export function getResourceNode(): ModelNode {
   return semanticModel["dcat:Resource"]
+}
+
+export function getOperationalNode(): ModelNode {
+  return operationalModel["rodeos:OperationalProfile"]
+}
+
+/**
+ * An axis is a root node plus the enum fields that auto-select the next
+ * hierarchy level ("X" → instance key "rodeos:X").
+ */
+export interface Axis {
+  id: "semantic" | "operational"
+  root: ModelNode
+  autoSelectors: string[]
+}
+
+export const SEMANTIC_AXIS: Axis = {
+  id: "semantic",
+  root: getResourceNode(),
+  autoSelectors: ["rodeos:coreType", "rodeos:componentType"],
+}
+
+export const OPERATIONAL_AXIS: Axis = {
+  id: "operational",
+  root: getOperationalNode(),
+  autoSelectors: ["rodeos:operationalType"],
 }
 
 /* ------------------------------------------------------------------ */
@@ -40,6 +83,8 @@ export type FieldKind =
   | "hex"
   | "duration"
   | "enum"
+  | "requirement"
+  | "jsonOrUri"
 
 export interface ParsedFieldType {
   kind: FieldKind
@@ -49,14 +94,20 @@ export interface ParsedFieldType {
   /** Original type string, e.g. "xsd:decimal" or "enum[a, b]" */
   raw: string
   placeholder: string
+  /**
+   * For "requirement" fields: the namespace every subject must start with
+   * ("hardware", "software" or "dataspace").
+   */
+  namespace: string | null
 }
 
 const URI_PATTERN = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const MAILTO_PATTERN = /^mailto:[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+export const MAILTO_PATTERN = /^mailto:[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const INT_PATTERN = /^-?\d+$/
 const DECIMAL_PATTERN = /^-?\d+\.?\d*$/
 const HEX_PATTERN = /^[0-9A-Fa-f]+$/
+const REQUIREMENT_PATTERN = /^rodeos:Requirement\[([a-z]+)\]$/
 
 export function parseFieldType(fieldType: string): ParsedFieldType {
   const result: ParsedFieldType = {
@@ -66,12 +117,26 @@ export function parseFieldType(fieldType: string): ParsedFieldType {
     pattern: null,
     raw: fieldType,
     placeholder: "",
+    namespace: null,
   }
 
   let inner = fieldType
   if (inner.startsWith("List[") && inner.endsWith("]")) {
     result.isList = true
     inner = inner.slice(5, -1)
+  }
+
+  const requirement = REQUIREMENT_PATTERN.exec(inner)
+  if (requirement) {
+    result.kind = "requirement"
+    result.namespace = requirement[1]
+    return result
+  }
+
+  if (inner === "rodeos:jsonOrUri") {
+    result.kind = "jsonOrUri"
+    result.placeholder = "https://… or a JSON object"
+    return result
   }
 
   if (inner.startsWith("enum[") && inner.endsWith("]")) {
@@ -110,11 +175,232 @@ export function parseFieldType(fieldType: string): ParsedFieldType {
   return result
 }
 
+/* ------------------------------------------------------------------ */
+/* Requirement expressions (KIT specification)                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A single requirement item of the KIT specification's small DSL, e.g.
+ * "hardware.memory >= 8 GB" → { subject, operator, value }. `value` is
+ * optional — operators like "required" carry no value.
+ */
+export interface Requirement {
+  subject: string
+  operator: string
+  value?: string
+}
+
+export interface OperatorSpec {
+  /** Operator literal as it appears between subject and value. */
+  operator: string
+  /** Whether the expression needs a value to be meaningful. */
+  needsValue: boolean
+  hint: string
+}
+
+/**
+ * The operators the specification defines. Custom operators (any string)
+ * remain allowed — the editor offers these as the well-known set.
+ */
+export const REQUIREMENT_OPERATORS: OperatorSpec[] = [
+  { operator: "required", needsValue: false, hint: "x required" },
+  { operator: "required for", needsValue: true, hint: "x required for y" },
+  { operator: "=", needsValue: true, hint: "x = value" },
+  { operator: ">=", needsValue: true, hint: "x >= value" },
+  { operator: "<=", needsValue: true, hint: "x <= value" },
+  { operator: "in", needsValue: true, hint: "x in {a, b, …}" },
+]
+
+/**
+ * Subject suggestions per namespace, mirroring the taxonomy sketched in the
+ * KIT specification. The lists are open — any subject is accepted, these
+ * only drive the editor's autocomplete.
+ */
+export const REQUIREMENT_SUBJECTS: Record<string, string[]> = {
+  hardware: [
+    "hardware.compute.cpu",
+    "hardware.compute.cpu.architecture",
+    "hardware.compute.memory",
+    "hardware.compute.gpu",
+    "hardware.robot",
+    "hardware.end_effector",
+    "hardware.sensor.camera",
+    "hardware.sensor.lidar",
+    "hardware.sensor.radar",
+    "hardware.sensor.imu",
+    "hardware.sensor.force_torque",
+    "hardware.sensor.proximity",
+    "hardware.sensor.encoder",
+    "hardware.interface.usb",
+    "hardware.interface.ethernet",
+    "hardware.interface.serial",
+    "hardware.interface.i2c",
+    "hardware.interface.gpio",
+  ],
+  software: [
+    "software.os",
+    "software.runtime",
+    "software.runtime.python",
+    "software.framework",
+    "software.middleware",
+    "software.api",
+    "software.service",
+    "software.network",
+    "software.filesystem",
+    "software.package",
+    "software.permission",
+  ],
+  dataspace: [
+    "dataspace.connector",
+    "dataspace.connector.dlr",
+    "dataspace.policy.access",
+    "dataspace.negotiation",
+    "dataspace.negotiation.dlr",
+    "dataspace.transfer",
+    "dataspace.permission",
+  ],
+}
+
+/**
+ * Parse the specification's textual form back into a requirement item, e.g.
+ * "software.runtime.python >= 3.12". Operators are matched longest-first so
+ * "required for" wins over "required" and ">=" over "=".
+ *
+ * A subject is a dotted namespace path and never contains a space, which is
+ * what separates a known operator from a custom one: in "software.api is not
+ * required" the trailing "required" is part of the operator, not the whole
+ * of it. Anything that matches no known operator falls back to "first token
+ * is the subject, the rest is the operator", so custom operators survive.
+ */
+export function parseRequirementText(text: string): Requirement | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  const byLength = [...REQUIREMENT_OPERATORS].sort(
+    (a, b) => b.operator.length - a.operator.length
+  )
+  for (const spec of byLength) {
+    const infix = ` ${spec.operator} `
+    const index = trimmed.indexOf(infix)
+    if (index > 0) {
+      const subject = trimmed.slice(0, index).trim()
+      const value = trimmed.slice(index + infix.length).trim()
+      if (subject && !subject.includes(" ")) {
+        return value
+          ? { subject, operator: spec.operator, value }
+          : { subject, operator: spec.operator }
+      }
+    }
+    const suffix = ` ${spec.operator}`
+    if (!spec.needsValue && trimmed.endsWith(suffix)) {
+      const subject = trimmed.slice(0, -suffix.length).trim()
+      if (subject && !subject.includes(" ")) {
+        return { subject, operator: spec.operator }
+      }
+    }
+  }
+
+  // Custom operator: everything after the subject.
+  const firstSpace = trimmed.indexOf(" ")
+  if (firstSpace > 0) {
+    const subject = trimmed.slice(0, firstSpace)
+    const operator = trimmed.slice(firstSpace + 1).trim()
+    if (operator) return { subject, operator }
+  }
+  return null
+}
+
+/**
+ * Coerce whatever an LLM returned for a requirement field into requirement
+ * items: an array of objects, an array of DSL strings, or a single string.
+ */
+export function coerceRequirements(raw: unknown): Requirement[] {
+  const items = Array.isArray(raw) ? raw : [raw]
+  const out: Requirement[] = []
+  for (const item of items) {
+    if (typeof item === "string") {
+      const parsed = parseRequirementText(item)
+      if (parsed) out.push(parsed)
+      continue
+    }
+    if (item && typeof item === "object") {
+      const row = item as Partial<Requirement>
+      const subject = String(row.subject ?? "").trim()
+      const operator = String(row.operator ?? "").trim()
+      if (!subject || !operator) continue
+      const value = String(row.value ?? "").trim()
+      out.push(value ? { subject, operator, value } : { subject, operator })
+    }
+  }
+  return out
+}
+
+/** Render a requirement in the specification's textual DSL form. */
+export function requirementToText(req: Requirement): string {
+  const value = req.value?.trim()
+  return [req.subject.trim(), req.operator.trim(), value]
+    .filter((part) => part)
+    .join(" ")
+}
+
+/** True for a row the user has not filled in at all — dropped on output. */
+export function isEmptyRequirement(req: Requirement): boolean {
+  return !req.subject.trim() && !req.operator.trim() && !req.value?.trim()
+}
+
 export interface ValidationResult {
   ok: boolean
   /** Coerced value ready for the output JSON (number, boolean, string, array). */
   value?: unknown
   error?: string
+}
+
+function validateRequirements(
+  namespace: string | null,
+  raw: unknown
+): ValidationResult {
+  if (!Array.isArray(raw)) return { ok: true, value: undefined }
+
+  const rows = raw as Requirement[]
+  const out: Requirement[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || isEmptyRequirement(row)) continue
+    const subject = String(row.subject ?? "").trim()
+    const operator = String(row.operator ?? "").trim()
+    const value = String(row.value ?? "").trim()
+
+    if (!subject) return { ok: false, error: "Every requirement needs a subject" }
+    if (!operator)
+      return { ok: false, error: `"${subject}" is missing an operator` }
+    if (namespace && subject !== namespace && !subject.startsWith(`${namespace}.`))
+      return {
+        ok: false,
+        error: `Subject must start with "${namespace}." — got "${subject}"`,
+      }
+
+    out.push(value ? { subject, operator, value } : { subject, operator })
+  }
+
+  return { ok: true, value: out.length ? out : undefined }
+}
+
+/**
+ * request_schema / response_schema of the KIT specification: either a URI
+ * pointing at the schema or the schema document itself.
+ */
+function validateJsonOrUri(raw: unknown): ValidationResult {
+  if (raw && typeof raw === "object") return { ok: true, value: raw }
+  const trimmed = String(raw ?? "").trim()
+  if (!trimmed) return { ok: true, value: undefined }
+  if (URI_PATTERN.test(trimmed)) return { ok: true, value: trimmed }
+  try {
+    return { ok: true, value: JSON.parse(trimmed) }
+  } catch {
+    return {
+      ok: false,
+      error: "Enter a schema URL (http://, https://) or a valid JSON object",
+    }
+  }
 }
 
 function validateScalar(parsed: ParsedFieldType, raw: string): ValidationResult {
@@ -167,6 +453,15 @@ function validateScalar(parsed: ParsedFieldType, raw: string): ValidationResult 
 export function validateField(fieldType: string, raw: unknown): ValidationResult {
   const parsed = parseFieldType(fieldType)
 
+  // Object-valued fields carry their own shape — they must be handled
+  // before the generic list path, which splits strings on commas.
+  if (parsed.kind === "requirement") {
+    return validateRequirements(parsed.namespace, raw)
+  }
+  if (parsed.kind === "jsonOrUri") {
+    return validateJsonOrUri(raw)
+  }
+
   if (parsed.kind === "boolean" && !parsed.isList) {
     if (typeof raw === "boolean") return { ok: true, value: raw }
     return { ok: true, value: undefined }
@@ -196,15 +491,21 @@ export function validateField(fieldType: string, raw: unknown): ValidationResult
 /* Hierarchy navigation                                                */
 /* ------------------------------------------------------------------ */
 
-/** Keys the UI stores manual sub-type selections under: path joined by "/". */
-export function pathKey(path: string[]): string {
-  return path.join("/")
+/**
+ * Keys the UI stores manual sub-type selections under: path joined by "/".
+ * Non-semantic axes are namespaced so their root level ("") cannot collide.
+ */
+export function pathKey(path: string[], axis: Axis["id"] = "semantic"): string {
+  const joined = path.join("/")
+  return axis === "semantic" ? joined : `${axis}:${joined}`
 }
 
 export interface Level {
-  /** Instance keys from dcat:Resource down to this node (root = []). */
+  /** Instance keys from the axis root down to this node (root = []). */
   path: string[]
   node: ModelNode
+  /** Which axis this level belongs to. */
+  axis: Axis["id"]
   /**
    * Set when this node has instances but no auto-selection rule — the UI
    * must render a sub-type selector with these options.
@@ -218,32 +519,35 @@ export interface Level {
  * A field enum whose value determines the child instance automatically,
  * mirroring the reference implementation: `rodeos:coreType` on the root
  * resource and `rodeos:componentType` on rodeos:Component map their value
- * "X" to the instance key "rodeos:X".
+ * "X" to the instance key "rodeos:X". The operational axis uses the same
+ * rule via `rodeos:operationalType`.
  */
-function autoSelectorField(node: ModelNode): string | null {
+function autoSelectorField(node: ModelNode, autoSelectors: string[]): string | null {
   const fields = { ...node.mandatory, ...node.optional }
-  for (const name of ["rodeos:coreType", "rodeos:componentType"]) {
+  for (const name of autoSelectors) {
     if (name in fields) return name
   }
   return null
 }
 
 /**
- * Compute the chain of active hierarchy levels given the current field
- * values and manual sub-type selections.
+ * Compute the chain of active hierarchy levels of one axis given the current
+ * field values and manual sub-type selections.
  */
 export function computeLevels(
   values: Record<string, unknown>,
-  selections: Record<string, string>
+  selections: Record<string, string>,
+  axis: Axis = SEMANTIC_AXIS
 ): Level[] {
   const levels: Level[] = []
-  let node: ModelNode | undefined = getResourceNode()
+  let node: ModelNode | undefined = axis.root
   const path: string[] = []
 
   while (node) {
     const level: Level = {
       path: [...path],
       node,
+      axis: axis.id,
       selectionOptions: null,
       selectedChild: null,
     }
@@ -251,14 +555,14 @@ export function computeLevels(
 
     if (!node.instances || Object.keys(node.instances).length === 0) break
 
-    const auto = autoSelectorField(node)
+    const auto = autoSelectorField(node, axis.autoSelectors)
     let childKey: string | null = null
     if (auto) {
       const v = values[auto]
       if (typeof v === "string" && v) childKey = `rodeos:${v}`
     } else {
       level.selectionOptions = Object.keys(node.instances)
-      const sel = selections[pathKey(path)]
+      const sel = selections[pathKey(path, axis.id)]
       if (sel) childKey = sel
     }
 
@@ -298,7 +602,10 @@ export function instanceLabel(key: string): string {
 }
 
 /** Merged mandatory/optional fields for an explicit hierarchy path. */
-export function collectFieldsForPath(path: string[]): {
+export function collectFieldsForPath(
+  path: string[],
+  axis: Axis = SEMANTIC_AXIS
+): {
   mandatory: FieldMap
   optional: FieldMap
   defaults: Record<string, string>
@@ -306,7 +613,7 @@ export function collectFieldsForPath(path: string[]): {
   const mandatory: FieldMap = {}
   const optional: FieldMap = {}
   const defaults: Record<string, string> = {}
-  let node: ModelNode | undefined = getResourceNode()
+  let node: ModelNode | undefined = axis.root
   const visit = (n: ModelNode) => {
     Object.assign(mandatory, n.mandatory ?? {})
     Object.assign(optional, n.optional ?? {})
@@ -341,8 +648,11 @@ function findChainsToKey(node: ModelNode, key: string): string[][] {
  * "serielRobot" without "stationaryRobot") are filled in when the target key
  * exists at a unique deeper position. Returns the longest valid path.
  */
-export function sanitizePath(path: string[]): string[] {
-  let node: ModelNode | undefined = getResourceNode()
+export function sanitizePath(
+  path: string[],
+  axis: Axis = SEMANTIC_AXIS
+): string[] {
+  let node: ModelNode | undefined = axis.root
   const valid: string[] = []
   for (const key of path) {
     if (!node?.instances) break

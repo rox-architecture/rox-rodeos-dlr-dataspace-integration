@@ -1,0 +1,69 @@
+{
+   "_comment":"Operational (KIT) metadata — the second, orthogonal axis next to semantic_model.json. It answers 'how is this asset delivered and invoked', while dcat:Resource answers 'what is it'. Same grammar as semantic_model.json (mandatory/optional/instances/defaultValues), so the same form engine renders it. Field names follow the RODEOS CURIE convention; the mapping to the KIT specification's snake_case names lives in lib/kit-metadata.ts.",
+   "rodeos:OperationalProfile":{
+      "mandatory":{
+         "rodeos:operationalType":"enum[static_file, container, file_service, streaming_service, workflow]"
+      },
+      "optional":{
+         "rodeos:contactEmail":"xsd:anyUri",
+         "rodeos:hardwareRequirements":"List[rodeos:Requirement[hardware]]",
+         "rodeos:softwareRequirements":"List[rodeos:Requirement[software]]",
+         "rodeos:dataspaceRequirements":"List[rodeos:Requirement[dataspace]]"
+      },
+      "instances":{
+         "rodeos:static_file":{
+            "mandatory":{
+               "rodeos:fileFormat":"xsd:text"
+            },
+            "optional":{
+               "rodeos:fileSize":"xsd:integer",
+               "rodeos:checksum":"xsd:text",
+               "rodeos:encoding":"xsd:text"
+            }
+         },
+         "rodeos:container":{
+            "mandatory":{
+               "rodeos:distributionType":"enum[oci_registry, archive, dockerfile]",
+               "rodeos:imageName":"xsd:text",
+               "rodeos:imageTag":"xsd:text",
+               "rodeos:platforms":"List[enum[linux/amd64, linux/arm64, windows/amd64, windows/arm64]]"
+            },
+            "optional":{
+
+            }
+         },
+         "rodeos:file_service":{
+            "mandatory":{
+               "rodeos:responseDataFormat":"xsd:text",
+               "rodeos:requestMethod":"enum[GET, POST, PUT, PATCH, DELETE]",
+               "rodeos:subpath":"xsd:text"
+            },
+            "optional":{
+               "rodeos:requestSchema":"rodeos:jsonOrUri",
+               "rodeos:responseSchema":"rodeos:jsonOrUri",
+               "rodeos:apiUrl":"xsd:anyUri"
+            }
+         },
+         "rodeos:streaming_service":{
+            "mandatory":{
+               "rodeos:responseDataFormat":"xsd:text",
+               "rodeos:requestMethod":"enum[GET, POST, PUT, PATCH, DELETE]",
+               "rodeos:subpath":"xsd:text"
+            },
+            "optional":{
+               "rodeos:requestSchema":"rodeos:jsonOrUri",
+               "rodeos:responseSchema":"rodeos:jsonOrUri",
+               "rodeos:apiUrl":"xsd:anyUri"
+            }
+         },
+         "rodeos:workflow":{
+            "mandatory":{
+
+            },
+            "optional":{
+
+            }
+         }
+      }
+   }
+}

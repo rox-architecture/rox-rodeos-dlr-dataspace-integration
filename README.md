@@ -11,6 +11,11 @@ robotics-specific classes. Every asset in the dataspace is described as a
 software, down to concrete robot, tooling, controller and sensor types) or
 **Service**.
 
+Assets are described along **two independent axes**: the semantic one above
+(*what is it?*) and an operational one (*how is it delivered and invoked?*),
+which produces the metadata KIT builders need to compose assets into
+pipelines.
+
 ## ⭐ The semantic model
 
 > **[`semantic_model.json`](./semantic_model.json)** — the heart of this
@@ -24,6 +29,30 @@ the LLM extraction prompt. Change the model, restart the app, and the UI
 adapts; no code changes required.
 
 The running app also serves it at [`/api/semantic-model`](http://localhost:3000/api/semantic-model).
+
+### The operational model
+
+> **[`operational_model.json`](./operational_model.json)** — the second axis.
+
+Same grammar, same form engine, separate file so the semantic model stays
+updatable on its own. It implements the KIT asset metadata specification
+([`asset_metadata_specification.md`](./asset_metadata_specification.md)):
+`rodeos:operationalType` (`static_file`, `container`, `file_service`,
+`streaming_service`, `workflow`) unfolds the fields of the matching branch —
+image name and platforms for a container, request method and subpath for a
+service — plus the hardware, software and dataspace **requirements** every
+type shares.
+
+The two axes are deliberately orthogonal: a `rodeos:Dataset` can be shipped as
+a static file, as a service returning a file, or as a stream, so the
+operational type cannot be derived from `rodeos:coreType`. A *physical*
+component (robot, gripper, sensor) is catalogued as `static_file`, because
+what the dataspace actually carries is its description.
+
+Fields the semantic axis already answers are not asked twice: `file_format`,
+`file_size`, `checksum` and `contact_email` are taken over from
+`rodeos:dataFormat`, `dcat:byteSize`, `dcat:checksum` and `dcat:contactPoint`,
+marked "taken from …" and overridable.
 
 ## Quick start
 
@@ -46,7 +75,7 @@ npm run kiosk
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RODEOS_LLM_PROVIDER` | `openrouter` | `openrouter` (remote, reference setup) or `ollama` (fully local) |
+| `RODEOS_LLM_PROVIDER` | `openrouter` | Default provider: `openrouter` (remote, reference setup) or `ollama` (fully local). Further providers are added in the UI, see below |
 | `OPENROUTER_API_KEY` | — | Key from [openrouter.ai/keys](https://openrouter.ai/keys), required for the default provider |
 | `RODEOS_DEFAULT_MODEL` | `openai/gpt-4o-mini` | Reference model for AI autofill (any OpenRouter model id) |
 | `RODEOS_PDF_ENGINE` | `mistral-ocr` | PDF parsing engine for uploads: `mistral-ocr` (OCR, like the original pipeline) or `pdf-text` (free, born-digital PDFs) |
@@ -56,11 +85,40 @@ npm run kiosk
 | `DATASPACE_API_KEY` | — | Bearer token for the dataspace API (enables asset registration) |
 | `DATASPACE_CONNECTOR` | — | Name of your connector in the dataspace |
 | `DATASPACE_ACCESS_POLICY_ID` / `DATASPACE_CONTRACT_POLICY_ID` | — | Optional: pin the policies used for new offers |
+| `RODEOS_SETTINGS_PATH` | `data/settings.json` | Where the UI stores providers added at runtime |
+| `RODEOS_SETTINGS_LOCKED` | `false` | `true` makes `/settings` read-only, pinning the providers to this file |
 
 **OpenRouter with the model from `RODEOS_DEFAULT_MODEL` is the reference and
 default configuration.** Ollama is the privacy-first alternative for fully
 local operation (`ollama serve`, e.g. `ollama pull qwen2.5:3b`); provider and
 model can also be switched per request directly in the UI.
+
+### Adding LLM providers in the UI (`/settings`)
+
+Whoever hosts the app can add further providers at runtime — **any endpoint
+speaking the OpenAI protocol** works, no `.env` edit and no restart needed:
+
+| Provider | Endpoint URL | Protocol |
+|---|---|---|
+| IONOS AI Model Hub | `https://openai.inference.de-txl.ionos.com/v1` | OpenAI-compatible |
+| OpenAI | `https://api.openai.com/v1` | OpenAI-compatible |
+| OpenRouter | `https://openrouter.ai/api/v1` | OpenRouter |
+| Ollama | `http://localhost:11434` | Ollama |
+| vLLM, LM Studio, Together, an internal gateway … | your URL | OpenAI-compatible |
+
+*Settings → Add a provider* prefills these presets; enter the endpoint, key
+and model id, then **Test connection** verifies reachability and lists the
+model ids the endpoint offers (click one to adopt it).
+
+API keys are stored **server-side** in `data/settings.json` (gitignored) and
+never sent to the browser — the UI only ever sees the last four characters. A
+key that comes from `.env` is not copied into that file, so rotating it there
+keeps working. PDF extraction remains OpenRouter-only, since it relies on
+their file-parser plugin; other providers handle pasted or `.md`/`.txt` text.
+
+> The endpoint is unauthenticated like the rest of the app. When hosting it
+> beyond a trusted network, set `RODEOS_SETTINGS_LOCKED=true` and configure
+> the providers through `.env`.
 
 ## Using the app
 
@@ -84,9 +142,18 @@ model can also be switched per request directly in the UI.
    only ever *proposes*, the form remains the source of truth. LLM-based PDF
    extraction runs via OpenRouter; for fully local Ollama use, upload
    .md/.txt or paste text.
-3. **Export** — the generated instance is previewed live as JSON, with
+3. **Operational profile (KIT metadata)** — pick how the asset is delivered
+   (`container`, `static_file`, `file_service`, `streaming_service`,
+   `workflow`); the matching fields unfold below. The **requirement editor**
+   captures what a consumer needs, one row per requirement (subject / operator
+   / value) with autocomplete over the specification's namespace taxonomy and
+   a live preview of the DSL form, e.g. `hardware.compute.memory >= 8 GB`.
+   Subjects are checked against the field's namespace. The AI autofill
+   proposes requirements too — always amber, since they are inferred rather
+   than documented.
+4. **Export** — the generated instance is previewed live as JSON, with
    completeness tracking of mandatory fields, and can be copied or downloaded.
-4. **Register in the dataspace** — once all mandatory fields are valid, the
+5. **Register in the dataspace** — once all mandatory fields are valid, the
    green *Register asset in Data Space* button publishes the instance to the
    DLR dataspace (see below).
 
@@ -127,6 +194,35 @@ dashboard's asset list is file-based and matches via this property), and
 links file and asset when they match. The human-readable title is kept in
 `title` and `dcterms:title`.
 
+### What a KIT builder reads
+
+Alongside the RODEOS CURIEs, the offer carries the same asset **projected
+onto the KIT metadata specification**, so a KIT builder never has to know
+RODEOS naming:
+
+```jsonc
+{
+  "operational_type": "container",
+  "image_name": "rox/object-detector",
+  "image_tag": "2.1.0",
+  "platforms": ["linux/amd64", "linux/arm64"],
+  "contact_email": "rox-support@dlr.de",
+  "description": "…",                       // from dcterms:description
+  "hardware_requirements": [
+    { "subject": "hardware.compute.gpu", "operator": "required" }
+  ],
+  "kitMetadata": { /* all of the above, nested */ },
+  "kitMetadataJson": "{…}"                  // the same, as a string
+}
+```
+
+`kitMetadataJson` is not redundant: **the EDC compacts single-element arrays
+to scalars**, so a requirements list with exactly one entry arrives as an
+object while two entries arrive as an array. Consumers that cannot handle
+both shapes parse the string instead. (`description` is shortened for the
+dashboard listing at the top level; `kitMetadata.description` holds the full
+text.)
+
 Setup: create an API key in the dataspace, set `DATASPACE_API_KEY` and
 `DATASPACE_CONNECTOR` in `.env` and restart the app. The button stays
 disabled (with a hint) until both are configured and reports the created
@@ -159,16 +255,22 @@ in any browser and use the fullscreen button in the header.
 ## Project structure
 
 ```
-semantic_model.json      ⭐ the RODEOS semantic model — single source of truth
+semantic_model.json      ⭐ the RODEOS semantic model — what an asset is
+operational_model.json   ⭐ the operational model — how it is delivered (KIT)
+asset_metadata_specification.md   the KIT metadata spec both implement
 app/
   page.tsx               main UI (header, form, footer)
-  api/autofill/          LLM extraction endpoint (OpenRouter / Ollama)
+  settings/              LLM provider configuration UI
+  api/autofill/          LLM extraction endpoint
   api/config/            exposes the active LLM configuration to the UI
+  api/settings/          read/write providers; /test probes an endpoint
   api/semantic-model/    serves semantic_model.json
-components/rodeos/       dynamic form, AI assist panel, JSON preview
+components/rodeos/       dynamic form, requirement editor, assist panel, preview
 components/ui/           shadcn components (Base UI)
 lib/semantic-model.ts    model parsing, type system, validation, hierarchy
-lib/llm.ts               provider abstraction (OpenRouter / Ollama)
+lib/kit-metadata.ts      projection onto the KIT specification, derivations
+lib/settings.ts          runtime provider configuration (server-side storage)
+lib/llm.ts               provider abstraction (OpenAI-compatible / Ollama)
 scripts/kiosk.mjs        cross-platform kiosk launcher
 design/                  RoX design system (tokens, previews, brand assets)
 ```

@@ -1,17 +1,26 @@
 /**
- * Server-side LLM access. Two providers are supported:
+ * Server-side LLM access. Providers are configured at runtime (see
+ * lib/settings.ts and /settings) rather than compiled in — anything that
+ * speaks the OpenAI protocol works: the IONOS AI Model Hub, OpenAI itself,
+ * vLLM, LM Studio, an internal gateway. Two kinds get special treatment:
  *
- *  - "openrouter" (default): any OpenRouter model, key + default model from .env
- *  - "ollama": fully local inference against an Ollama server
- *
- * The provider/model can be overridden per request from the UI; the .env
- * values define the reference configuration.
+ *  - "openrouter": OpenAI-compatible plus the headers and the file-parser
+ *    plugin used for PDF extraction
+ *  - "ollama": local inference over Ollama's own /api/chat protocol
  */
 
-export type LlmProvider = "openrouter" | "ollama"
+import {
+  findProvider,
+  type ProviderKind,
+  type ProviderSettings,
+} from "@/lib/settings"
 
 export interface LlmConfig {
-  provider: LlmProvider
+  providerId: string
+  label: string
+  kind: ProviderKind
+  baseUrl: string
+  apiKey?: string
   model: string
 }
 
@@ -20,75 +29,123 @@ export interface ChatMessage {
   content: string
 }
 
-export const DEFAULTS = {
-  provider: (process.env.RODEOS_LLM_PROVIDER === "ollama"
-    ? "ollama"
-    : "openrouter") as LlmProvider,
-  openrouterModel: process.env.RODEOS_DEFAULT_MODEL || "openai/gpt-4o-mini",
-  ollamaModel: process.env.RODEOS_LOCAL_MODEL || "qwen2.5:3b",
-  ollamaBaseUrl: process.env.OLLAMA_BASE_URL || "http://localhost:11434",
+/**
+ * Resolve the provider requested by the UI (falling back to the configured
+ * default) and the model to use with it.
+ */
+export async function resolveConfig(
+  providerId?: string | null,
+  model?: string | null
+): Promise<LlmConfig> {
+  const provider = await findProvider(providerId)
+  if (!provider) {
+    throw new Error(
+      "No LLM provider is configured. Add one under Settings in the app."
+    )
+  }
+  return toConfig(provider, model?.trim() || provider.model)
 }
 
-export function resolveConfig(
-  provider?: string | null,
-  model?: string | null
-): LlmConfig {
-  const p: LlmProvider = provider === "ollama" || provider === "openrouter"
-    ? provider
-    : DEFAULTS.provider
-  const m =
-    model?.trim() ||
-    (p === "ollama" ? DEFAULTS.ollamaModel : DEFAULTS.openrouterModel)
-  return { provider: p, model: m }
+export function toConfig(provider: ProviderSettings, model: string): LlmConfig {
+  return {
+    providerId: provider.id,
+    label: provider.label,
+    kind: provider.kind,
+    baseUrl: provider.baseUrl.replace(/\/$/, ""),
+    apiKey: provider.apiKey,
+    model,
+  }
 }
 
 export async function chatCompletion(
   config: LlmConfig,
   messages: ChatMessage[]
 ): Promise<string> {
-  if (config.provider === "ollama") {
-    return ollamaChat(config.model, messages)
-  }
-  return openrouterChat(config.model, messages)
+  if (config.kind === "ollama") return ollamaChat(config, messages)
+  return openAiChat(config, { model: config.model, messages, temperature: 0.1 })
 }
 
-async function openrouterRequest(body: Record<string, unknown>): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) {
+/* ------------------------------------------------------------------ */
+/* OpenAI-compatible providers                                         */
+/* ------------------------------------------------------------------ */
+
+function requireEndpoint(config: LlmConfig): void {
+  if (!config.baseUrl) {
     throw new Error(
-      "OPENROUTER_API_KEY is not set. Add it to the .env file in the project root or switch the provider to Ollama."
+      `No endpoint URL configured for "${config.label}". Add it under Settings.`
+    )
+  }
+  if (!config.apiKey) {
+    throw new Error(
+      `No API key configured for "${config.label}". Add it under Settings, or switch to a local provider.`
+    )
+  }
+  if (!config.model) {
+    throw new Error(
+      `No model configured for "${config.label}". Enter a model id under Settings.`
+    )
+  }
+}
+
+function openAiHeaders(config: LlmConfig): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+  }
+  if (config.kind === "openrouter") {
+    headers["HTTP-Referer"] =
+      "https://github.com/dlr/rox-rodeos-dlr-dataspace-integration"
+    headers["X-Title"] = "RODEOS Semantic Model Generator"
+  }
+  return headers
+}
+
+/**
+ * POST to {baseUrl}/chat/completions. Used for every OpenAI-compatible
+ * provider — the body may carry provider-specific extras (OpenRouter's
+ * file-parser plugin, for instance).
+ */
+async function openAiRequest(
+  config: LlmConfig,
+  body: Record<string, unknown>
+): Promise<string> {
+  requireEndpoint(config)
+
+  let res: Response
+  try {
+    res = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: openAiHeaders(config),
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    throw new Error(
+      `Cannot reach ${config.label} at ${config.baseUrl}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
     )
   }
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://github.com/dlr/rox-rodeos-dlr-dataspace-integration",
-      "X-Title": "RODEOS Semantic Model Generator",
-    },
-    body: JSON.stringify(body),
-  })
-
   if (!res.ok) {
     const errBody = await res.text()
-    throw new Error(`OpenRouter error ${res.status}: ${errBody.slice(0, 500)}`)
+    throw new Error(
+      `${config.label} error ${res.status}: ${errBody.slice(0, 500)}`
+    )
   }
 
   const data = await res.json()
   const content = data?.choices?.[0]?.message?.content
   if (typeof content !== "string") {
-    throw new Error("OpenRouter returned an unexpected response shape")
+    throw new Error(`${config.label} returned an unexpected response shape`)
   }
   return content
 }
 
-async function openrouterChat(
-  model: string,
-  messages: ChatMessage[]
+async function openAiChat(
+  config: LlmConfig,
+  body: Record<string, unknown>
 ): Promise<string> {
-  return openrouterRequest({ model, messages, temperature: 0.1 })
+  return openAiRequest(config, body)
 }
 
 /**
@@ -98,14 +155,14 @@ async function openrouterChat(
  * "pdf-text" for born-digital PDFs at no parsing cost) is configurable via
  * RODEOS_PDF_ENGINE.
  */
-export async function openrouterExtractPdf(
-  model: string,
+export async function extractPdf(
+  config: LlmConfig,
   filename: string,
   base64Data: string
 ): Promise<string> {
   const engine = process.env.RODEOS_PDF_ENGINE || "mistral-ocr"
-  return openrouterRequest({
-    model,
+  return openAiRequest(config, {
+    model: config.model,
     temperature: 0.1,
     plugins: [{ id: "file-parser", pdf: { engine } }],
     messages: [
@@ -134,27 +191,29 @@ export async function openrouterExtractPdf(
   })
 }
 
+/* ------------------------------------------------------------------ */
+/* Ollama                                                              */
+/* ------------------------------------------------------------------ */
+
 async function ollamaChat(
-  model: string,
+  config: LlmConfig,
   messages: ChatMessage[]
 ): Promise<string> {
-  const base = DEFAULTS.ollamaBaseUrl.replace(/\/$/, "")
+  const base = config.baseUrl || "http://localhost:11434"
   let res: Response
   try {
     res = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: config.model,
         messages,
         stream: false,
         options: { temperature: 0.1 },
       }),
     })
   } catch {
-    throw new Error(
-      `Cannot reach Ollama at ${base}. Is "ollama serve" running?`
-    )
+    throw new Error(`Cannot reach Ollama at ${base}. Is "ollama serve" running?`)
   }
 
   if (!res.ok) {
@@ -169,6 +228,81 @@ async function ollamaChat(
   }
   return content
 }
+
+/* ------------------------------------------------------------------ */
+/* Connection test                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface ProviderProbe {
+  ok: boolean
+  message: string
+  /** Model ids the endpoint reports, when it offers a listing. */
+  models: string[]
+}
+
+/**
+ * Verify that a provider is reachable and list the models it offers, so a
+ * user configuring an endpoint can see it works before running an autofill.
+ */
+export async function probeProvider(config: LlmConfig): Promise<ProviderProbe> {
+  const base = config.baseUrl.replace(/\/$/, "")
+  if (!base) {
+    return { ok: false, message: "No endpoint URL configured.", models: [] }
+  }
+
+  const url = config.kind === "ollama" ? `${base}/api/tags` : `${base}/models`
+  let res: Response
+  try {
+    res = await fetch(url, {
+      headers: config.apiKey
+        ? { Authorization: `Bearer ${config.apiKey}` }
+        : undefined,
+    })
+  } catch (err) {
+    return {
+      ok: false,
+      message: `Cannot reach ${url}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      models: [],
+    }
+  }
+
+  if (!res.ok) {
+    const body = await res.text()
+    return {
+      ok: false,
+      message: `${url} answered ${res.status}: ${body.slice(0, 200)}`,
+      models: [],
+    }
+  }
+
+  let models: string[] = []
+  try {
+    const data = await res.json()
+    const raw = config.kind === "ollama" ? data?.models : data?.data
+    if (Array.isArray(raw)) {
+      models = raw
+        .map((entry: { id?: string; name?: string }) => entry?.id ?? entry?.name)
+        .filter((id: unknown): id is string => typeof id === "string")
+        .sort()
+    }
+  } catch {
+    // Reachable but not a model listing — still a successful connection.
+  }
+
+  return {
+    ok: true,
+    message: models.length
+      ? `Connected — ${models.length} model${models.length === 1 ? "" : "s"} available.`
+      : "Connected.",
+    models,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Response parsing                                                    */
+/* ------------------------------------------------------------------ */
 
 /**
  * Extract the first JSON object from an LLM response: strips <think> blocks

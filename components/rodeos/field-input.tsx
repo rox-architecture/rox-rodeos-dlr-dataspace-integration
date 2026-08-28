@@ -1,6 +1,6 @@
 "use client"
 
-import { SparklesIcon } from "lucide-react"
+import { ArrowDownLeftIcon, SparklesIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { parseFieldType } from "@/lib/semantic-model"
+import { RequirementEditor } from "@/components/rodeos/requirement-editor"
+import { parseFieldType, type Requirement } from "@/lib/semantic-model"
 import { cn } from "@/lib/utils"
 
 export interface FieldInputProps {
@@ -28,11 +29,25 @@ export interface FieldInputProps {
    * "suggested" → value is an unverified LLM proposal (amber outline)
    */
   status?: "missing" | "suggested"
+  /**
+   * Set when the value was taken over from a field of the semantic axis
+   * (e.g. rodeos:fileSize ← dcat:byteSize) — shown as a hint.
+   */
+  derivedFrom?: string
   onChange: (raw: unknown) => void
 }
 
 const SUGGESTED_CLASS =
   "border-(--rox-gold) ring-3 ring-(--rox-gold)/30 dark:border-(--rox-gold)"
+
+/** Multi-enum raw state is an array; tolerate the comma string form too. */
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String)
+  return String(value ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+}
 
 export function FieldInput({
   name,
@@ -41,12 +56,27 @@ export function FieldInput({
   value,
   error,
   status,
+  derivedFrom,
   onChange,
 }: FieldInputProps) {
   const parsed = parseFieldType(fieldType)
   const id = `field-${name.replace(/[^a-zA-Z0-9]/g, "-")}`
   const invalid = Boolean(error) || status === "missing"
   const statusClass = status === "suggested" ? SUGGESTED_CLASS : undefined
+
+  // Requirement lists carry their own layout and label.
+  if (parsed.kind === "requirement") {
+    return (
+      <RequirementEditor
+        name={name}
+        namespace={parsed.namespace ?? "hardware"}
+        value={Array.isArray(value) ? (value as Requirement[]) : []}
+        error={error}
+        status={status}
+        onChange={onChange}
+      />
+    )
+  }
 
   let control: React.ReactNode
 
@@ -64,7 +94,40 @@ export function FieldInput({
         </span>
       </div>
     )
-  } else if (parsed.kind === "enum" && !parsed.isList) {
+  } else if (parsed.kind === "enum" && parsed.isList) {
+    // set<enum> (e.g. container platforms): pick any number of literals.
+    const selected = toStringArray(value)
+    control = (
+      <div
+        role="group"
+        aria-label={name}
+        className={cn(
+          "flex flex-col gap-1.5 rounded-md border p-2",
+          status === "suggested" && SUGGESTED_CLASS,
+          invalid && "border-destructive"
+        )}
+      >
+        {parsed.enumValues.map((option) => (
+          <label
+            key={option}
+            className="flex items-center gap-2 text-sm font-normal"
+          >
+            <Checkbox
+              checked={selected.includes(option)}
+              onCheckedChange={(checked) =>
+                onChange(
+                  checked === true
+                    ? [...selected, option]
+                    : selected.filter((v) => v !== option)
+                )
+              }
+            />
+            <span className="font-mono text-xs">{option}</span>
+          </label>
+        ))}
+      </div>
+    )
+  } else if (parsed.kind === "enum") {
     control = (
       <Select
         value={typeof value === "string" && value ? value : null}
@@ -85,6 +148,24 @@ export function FieldInput({
           ))}
         </SelectContent>
       </Select>
+    )
+  } else if (parsed.kind === "jsonOrUri") {
+    // request_schema / response_schema: a URL or the schema document itself.
+    const text =
+      typeof value === "string"
+        ? value
+        : value
+          ? JSON.stringify(value, null, 2)
+          : ""
+    control = (
+      <Textarea
+        id={id}
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={parsed.placeholder}
+        aria-invalid={invalid}
+        className={cn("min-h-16 font-mono text-xs", statusClass)}
+      />
     )
   } else if (parsed.isList) {
     control = (
@@ -143,6 +224,11 @@ export function FieldInput({
         </p>
       ) : status === "missing" ? (
         <p className="text-xs text-destructive/80">Required — still empty</p>
+      ) : derivedFrom ? (
+        <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <ArrowDownLeftIcon className="size-3" />
+          taken from <span className="font-mono">{derivedFrom}</span>
+        </p>
       ) : null}
     </div>
   )

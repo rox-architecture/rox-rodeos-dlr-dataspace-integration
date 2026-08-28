@@ -16,7 +16,8 @@ interface UploadedFile {
 }
 
 export interface DocDropzoneProps {
-  provider: "openrouter" | "ollama"
+  /** Id of the selected LLM provider. */
+  provider: string
   model: string
   /** Called with the extracted document text once available. */
   onText: (text: string, filename: string) => void

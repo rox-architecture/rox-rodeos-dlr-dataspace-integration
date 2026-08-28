@@ -5,6 +5,11 @@ import {
   resolvePolicies,
   uploadJsonFile,
 } from "@/lib/dataspace"
+import {
+  buildKitMetadata,
+  describeKitMetadata,
+  kitAssetProperties,
+} from "@/lib/kit-metadata"
 
 interface RegisterRequest {
   instance?: Record<string, unknown>
@@ -109,6 +114,10 @@ export async function POST(request: Request) {
       ...instance,
       // Untouched nested copy for lossless retrieval of the instance.
       rodeosInstance: instance,
+      // The same asset projected onto the KIT metadata specification
+      // (operational_type, image_name, hardware_requirements …) so KIT
+      // builders can compose the asset without knowing RODEOS CURIEs.
+      ...kitAssetProperties(instance),
       // Curated display properties used by the dataspace dashboard —
       // listed last so they always win over instance keys. The dashboard
       // links the uploaded file to this asset via "filename", and its Edit
@@ -118,6 +127,8 @@ export async function POST(request: Request) {
       filename,
       name: filename,
       title,
+      // Shortened for the dashboard listing; kitMetadata.description keeps
+      // the full text.
       description,
       offerType: "data",
       contenttype: "application/json",
@@ -134,6 +145,7 @@ export async function POST(request: Request) {
       accessPolicyId: policies.accessPolicyId,
       contractPolicyId: policies.contractPolicyId,
       policySource: policies.source,
+      kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
     })
   } catch (err) {
     return Response.json(

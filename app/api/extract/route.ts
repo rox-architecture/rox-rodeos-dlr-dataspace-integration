@@ -1,4 +1,4 @@
-import { openrouterExtractPdf, resolveConfig } from "@/lib/llm"
+import { extractPdf, resolveConfig } from "@/lib/llm"
 
 /** ~20 MB PDF → ~27 MB base64. */
 const MAX_BASE64_LENGTH = 28_000_000
@@ -37,23 +37,33 @@ export async function POST(request: Request) {
     )
   }
 
-  const config = resolveConfig(body.provider, body.model)
-  if (config.provider !== "openrouter") {
+  let config
+  try {
+    config = await resolveConfig(body.provider, body.model)
+  } catch (err) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 400 }
+    )
+  }
+
+  // PDF parsing rides on OpenRouter's file-parser plugin; other providers
+  // have no equivalent, so the user is pointed at a working path instead.
+  if (config.kind !== "openrouter") {
     return Response.json(
       {
-        error:
-          "LLM-based PDF extraction currently runs via OpenRouter. Switch the provider to OpenRouter, or paste the document text / upload a .md or .txt file for fully local use.",
+        error: `LLM-based PDF extraction currently runs via OpenRouter — "${config.label}" cannot parse PDFs. Switch the provider to OpenRouter, or paste the document text / upload a .md or .txt file.`,
       },
       { status: 400 }
     )
   }
 
   try {
-    const text = await openrouterExtractPdf(config.model, filename, data)
+    const text = await extractPdf(config, filename, data)
     return Response.json({
       text,
       filename,
-      provider: config.provider,
+      provider: config.label,
       model: config.model,
     })
   } catch (err) {
