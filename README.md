@@ -56,6 +56,8 @@ marked "taken from …" and overridable.
 
 ## Quick start
 
+Requires **Node.js 20.9+** (22 LTS recommended).
+
 ```bash
 # 1. Install dependencies
 npm install
@@ -71,13 +73,19 @@ npm run build
 npm run kiosk
 ```
 
+The app starts **without any configuration** and says in the UI what is
+missing — you can fill the form and download instances right away. Keys are
+only needed for the AI autofill and for registering assets in the dataspace.
+
+To run it as a service instead, see **[Deployment](#deployment)**.
+
 ### Configuration (`.env`)
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `RODEOS_LLM_PROVIDER` | `openrouter` | Default provider: `openrouter` (remote, reference setup) or `ollama` (fully local). Further providers are added in the UI, see below |
 | `OPENROUTER_API_KEY` | — | Key from [openrouter.ai/keys](https://openrouter.ai/keys), required for the default provider |
-| `RODEOS_DEFAULT_MODEL` | `openai/gpt-4o-mini` | Reference model for AI autofill (any OpenRouter model id) |
+| `RODEOS_DEFAULT_MODEL` | `openai/gpt-4o-mini` (`.env.example` ships `anthropic/claude-opus-5`) | Model for AI autofill — any OpenRouter model id. The prompt carries both models, so pick one that fits your budget |
 | `RODEOS_PDF_ENGINE` | `mistral-ocr` | PDF parsing engine for uploads: `mistral-ocr` (OCR, like the original pipeline) or `pdf-text` (free, born-digital PDFs) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server for local inference |
 | `RODEOS_LOCAL_MODEL` | `qwen2.5:3b` | Default Ollama model |
@@ -85,40 +93,92 @@ npm run kiosk
 | `DATASPACE_API_KEY` | — | Bearer token for the dataspace API (enables asset registration) |
 | `DATASPACE_CONNECTOR` | — | Name of your connector in the dataspace |
 | `DATASPACE_ACCESS_POLICY_ID` / `DATASPACE_CONTRACT_POLICY_ID` | — | Optional: pin the policies used for new offers |
-| `RODEOS_SETTINGS_PATH` | `data/settings.json` | Where the UI stores providers added at runtime |
+| `RODEOS_SETTINGS_PATH` | `data/settings.json` | Where the UI stores providers added at runtime. Relative paths resolve against the server's working directory; the directory must be writable |
 | `RODEOS_SETTINGS_LOCKED` | `false` | `true` makes `/settings` read-only, pinning the providers to this file |
+| `PORT` | `3000` | Port for `npm run start`, `npm run kiosk` and the container |
 
 **OpenRouter with the model from `RODEOS_DEFAULT_MODEL` is the reference and
 default configuration.** Ollama is the privacy-first alternative for fully
 local operation (`ollama serve`, e.g. `ollama pull qwen2.5:3b`); provider and
 model can also be switched per request directly in the UI.
 
-### Adding LLM providers in the UI (`/settings`)
+### Adding your own LLM provider (`/settings`)
 
-Whoever hosts the app can add further providers at runtime — **any endpoint
-speaking the OpenAI protocol** works, no `.env` edit and no restart needed:
+The autofill is not tied to OpenRouter. **Any endpoint that speaks the OpenAI
+protocol** can be added at run time from the *Settings* page in the app — no
+`.env` edit, no rebuild, no restart. This is how whoever hosts the app points
+it at their own inference.
 
-| Provider | Endpoint URL | Protocol |
-|---|---|---|
-| IONOS AI Model Hub | `https://openai.inference.de-txl.ionos.com/v1` | OpenAI-compatible |
-| OpenAI | `https://api.openai.com/v1` | OpenAI-compatible |
-| OpenRouter | `https://openrouter.ai/api/v1` | OpenRouter |
-| Ollama | `http://localhost:11434` | Ollama |
-| vLLM, LM Studio, Together, an internal gateway … | your URL | OpenAI-compatible |
+**Step by step**
 
-*Settings → Add a provider* prefills these presets; enter the endpoint, key
-and model id, then **Test connection** verifies reachability and lists the
-model ids the endpoint offers (click one to adopt it).
+1. Open the app and click **Settings** in the header (or go to `/settings`).
+2. Under *Add a provider*, pick the preset that matches your endpoint. It
+   prefills the URL and the protocol:
 
-API keys are stored **server-side** in `data/settings.json` (gitignored) and
-never sent to the browser — the UI only ever sees the last four characters. A
-key that comes from `.env` is not copied into that file, so rotating it there
-keeps working. PDF extraction remains OpenRouter-only, since it relies on
-their file-parser plugin; other providers handle pasted or `.md`/`.txt` text.
+   | Preset | Endpoint URL | Protocol |
+   |---|---|---|
+   | IONOS AI Model Hub | `https://openai.inference.de-txl.ionos.com/v1` | OpenAI-compatible |
+   | OpenAI | `https://api.openai.com/v1` | OpenAI-compatible |
+   | OpenRouter | `https://openrouter.ai/api/v1` | OpenRouter |
+   | Ollama (local) | `http://localhost:11434` | Ollama |
+   | Other OpenAI-compatible endpoint | *your URL* | OpenAI-compatible |
 
-> The endpoint is unauthenticated like the rest of the app. When hosting it
-> beyond a trusted network, set `RODEOS_SETTINGS_LOCKED=true` and configure
-> the providers through `.env`.
+3. Fill in the four fields:
+   - **Name** — free text, this is what the autofill panel shows.
+   - **Protocol** — `OpenAI-compatible` for almost everything. `OpenRouter`
+     adds their headers and the PDF file-parser plugin. `Ollama` speaks
+     Ollama's own `/api/chat`.
+   - **Endpoint URL** — the base URL **including the version segment** and
+     **without** `/chat/completions`. For the IONOS AI Model Hub that means
+     the URL must end in `/v1`.
+   - **API key** — the bearer token. Not needed for Ollama.
+4. Click **Test connection**. It calls `GET {endpoint}/models` (Ollama:
+   `/api/tags`) and reports either a concrete error — wrong URL, 401, host
+   unreachable — or *Connected — N models available*, followed by the model
+   ids the endpoint offers. **Click one to adopt it** as the default model.
+5. Enter a **Default model** if the endpoint offers no listing, then
+   **Save configuration**. Pick the provider as **Default provider** if the
+   autofill should use it out of the box.
+6. Back on the generator, the provider appears in the *Provider* dropdown of
+   the AI autofill panel; the model can still be overridden per run.
+
+**A worked example — IONOS AI Model Hub**
+
+```
+Name            IONOS AI Model Hub
+Protocol        OpenAI-compatible
+Endpoint URL    https://openai.inference.de-txl.ionos.com/v1
+API key         <token from the IONOS Cloud panel>
+Default model   (use "Test connection" and click one of the listed ids)
+```
+
+**How keys are handled**
+
+- Providers added in the UI are written to `data/settings.json` **on the
+  server**; the file is gitignored and, in Docker, lives on the `/app/data`
+  volume.
+- A key **never reaches the browser**. The API reports only whether one is
+  stored and its last four characters (`…1234`).
+- A key that still equals the `.env` value is **not** copied into that file,
+  so rotating it in `.env` keeps working. Such providers are marked
+  *"Taken from the .env file"* and have no delete button.
+- The providers defined by `.env` (OpenRouter, Ollama) can be edited but not
+  removed — they reappear from the environment on the next start.
+
+**Limitations**
+
+- **PDF extraction is OpenRouter-only.** It relies on their file-parser
+  plugin, which the plain OpenAI protocol has no equivalent for. With any
+  other provider, upload `.md`/`.txt` or paste the text — the autofill itself
+  works with all of them.
+- The autofill prompt embeds both models and is therefore a few thousand
+  tokens long. Very small local models (e.g. 3B) often fail to return valid
+  JSON for it; the endpoint gets one retry before the run is reported as
+  failed.
+
+> **Before hosting this for others:** the settings page has no authentication
+> of its own, like the rest of the app. Set `RODEOS_SETTINGS_LOCKED=true` and
+> configure the providers through `.env` — see [Deployment](#deployment).
 
 ## Using the app
 
@@ -245,6 +305,83 @@ mandatory fields of the instance to be valid.
 > contact the dataspace operators (DLR Institute for AI Safety and Security)
 > and ask them to include your connector in the federated catalog crawler.
 
+## Deployment
+
+The app is a standard Next.js server. It keeps **no database** — the only
+state it writes is `data/settings.json` (providers added through the UI).
+Everything else lives in the request or in the dataspace.
+
+### With Docker (recommended)
+
+```bash
+cp .env.example .env          # fill in the keys
+docker compose up -d --build  # http://localhost:3000
+```
+
+`docker compose` builds the image from the [`Dockerfile`](./Dockerfile),
+runs it as a non-root user and mounts a named volume at `/app/data` so the
+provider configuration survives restarts. Without compose:
+
+```bash
+docker build -t rodeos-generator .
+docker run -d -p 3000:3000 --env-file .env \
+  -v rodeos-data:/app/data --name rodeos rodeos-generator
+```
+
+**Keys are never baked into the image**: [`.dockerignore`](./.dockerignore)
+keeps `.env` out of the build context — Next.js would otherwise copy it into
+the standalone bundle — so the environment is supplied at run time. Keep that
+entry when you edit the file.
+
+`GET /api/health` answers `{"status":"ok"}` and is wired up as the container's
+`HEALTHCHECK`; use it for your load balancer or orchestrator too.
+
+### Without Docker
+
+```bash
+npm ci
+npm run build
+npm run start        # honours PORT, defaults to 3000
+```
+
+Run it behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS.
+Two things matter:
+
+- The process needs **write access to the settings directory**. It resolves
+  relative to the working directory, so either start the server from the
+  project root or set an absolute `RODEOS_SETTINGS_PATH=/var/lib/rodeos/settings.json`.
+- Uploaded PDFs are posted as base64 in a JSON body up to ~28 MB. Raise the
+  proxy's body limit accordingly (nginx: `client_max_body_size 32m;`), or PDF
+  upload fails with a 413 from the proxy rather than from the app.
+
+### Serverless / Vercel
+
+Works for everything **except the `/settings` page**: platforms with an
+ephemeral or read-only filesystem cannot persist `data/settings.json`, so
+providers added in the UI are lost on the next cold start. Deploy with
+`RODEOS_SETTINGS_LOCKED=true` and configure the providers through environment
+variables — or use a platform with a persistent volume.
+
+### Security
+
+The app has **no authentication of its own**. Anyone who can reach it can
+
+- run the AI autofill, spending your LLM budget,
+- register assets in the dataspace under your connector,
+- and, unless locked, change the provider configuration and enter keys.
+
+For anything beyond a single-user machine or a trusted network:
+
+1. Put an authenticating reverse proxy in front (Basic auth, OIDC, mTLS, or
+   your organisation's SSO).
+2. Set **`RODEOS_SETTINGS_LOCKED=true`**. The settings page becomes
+   read-only, and the connection test is restricted to the configured
+   providers — without that restriction it would let a caller probe arbitrary
+   hosts from the server and see part of the response.
+3. Keep `.env` out of the image and out of git (both are already configured).
+4. Use a dataspace API key scoped to the connector you actually want to
+   publish to.
+
 ## Kiosk mode (Mac / Windows / Linux)
 
 `npm run kiosk` starts the production server and opens a Chromium-based
@@ -258,6 +395,8 @@ in any browser and use the fullscreen button in the header.
 semantic_model.json      ⭐ the RODEOS semantic model — what an asset is
 operational_model.json   ⭐ the operational model — how it is delivered (KIT)
 asset_metadata_specification.md   the KIT metadata spec both implement
+Dockerfile               production image (standalone build, non-root)
+docker-compose.yml       one-command deployment with a data volume
 app/
   page.tsx               main UI (header, form, footer)
   settings/              LLM provider configuration UI
@@ -265,6 +404,7 @@ app/
   api/config/            exposes the active LLM configuration to the UI
   api/settings/          read/write providers; /test probes an endpoint
   api/semantic-model/    serves semantic_model.json
+  api/health/            liveness probe for containers / load balancers
 components/rodeos/       dynamic form, requirement editor, assist panel, preview
 components/ui/           shadcn components (Base UI)
 lib/semantic-model.ts    model parsing, type system, validation, hierarchy

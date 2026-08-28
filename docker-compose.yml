@@ -1,0 +1,25 @@
+# Minimal deployment:
+#
+#   cp .env.example .env     # fill in the keys
+#   docker compose up -d --build
+#
+# The app then runs on http://localhost:3000. It has no authentication of its
+# own — see the "Deployment" section of the README before exposing it beyond a
+# trusted network.
+
+services:
+  rodeos-generator:
+    build: .
+    image: rodeos-generator:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    # Keys are read at run time, never baked into the image.
+    env_file:
+      - .env
+    volumes:
+      # Provider configuration written by the /settings page.
+      - rodeos-data:/app/data
+
+volumes:
+  rodeos-data:

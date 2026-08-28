@@ -1,5 +1,5 @@
 import { probeProvider, toConfig } from "@/lib/llm"
-import { findProvider, type ProviderKind } from "@/lib/settings"
+import { findProvider, settingsLocked, type ProviderKind } from "@/lib/settings"
 
 export const dynamic = "force-dynamic"
 
@@ -27,18 +27,36 @@ export async function POST(request: Request) {
   }
 
   const stored = body.id ? await findProvider(body.id) : null
-  const kind: ProviderKind =
-    body.kind === "ollama" || body.kind === "openrouter"
+
+  // A locked deployment must not let callers point this at arbitrary hosts:
+  // the probe would otherwise be a request forgery primitive that reports a
+  // slice of the response back. Only configured providers can be tested.
+  const locked = settingsLocked()
+  if (locked && !stored) {
+    return Response.json(
+      {
+        ok: false,
+        message:
+          "Settings are locked (RODEOS_SETTINGS_LOCKED=true) — only providers configured in the .env file can be tested.",
+        models: [],
+      },
+      { status: 403 }
+    )
+  }
+
+  const kind: ProviderKind = locked
+    ? stored!.kind
+    : body.kind === "ollama" || body.kind === "openrouter"
       ? body.kind
       : body.kind === "openai"
         ? "openai"
         : (stored?.kind ?? "openai")
 
-  const baseUrl = (body.baseUrl ?? stored?.baseUrl ?? "").trim()
+  const baseUrl = (locked ? stored!.baseUrl : (body.baseUrl ?? stored?.baseUrl ?? "")).trim()
   // An empty key in the draft means "use the one already stored" — the form
   // never receives the secret it would otherwise have to send back.
-  const apiKey = body.apiKey?.trim() || stored?.apiKey
-  const model = (body.model ?? stored?.model ?? "").trim()
+  const apiKey = locked ? stored!.apiKey : body.apiKey?.trim() || stored?.apiKey
+  const model = (locked ? stored!.model : (body.model ?? stored?.model ?? "")).trim()
 
   const probe = await probeProvider(
     toConfig(

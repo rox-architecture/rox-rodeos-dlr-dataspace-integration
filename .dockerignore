@@ -1,0 +1,28 @@
+# Secrets must never enter the build context: Next.js copies a .env found
+# there into .next/standalone, which would bake the keys into the image.
+# Supply them at runtime instead (--env-file / compose environment).
+.env
+.env.*
+!.env.example
+data/
+
+# Build artefacts and local state
+node_modules
+.next
+out
+build
+*.tsbuildinfo
+
+# Not needed to serve a request
+RODEOS-main/
+design/
+.git
+.gitignore
+.vscode
+.idea
+*.log
+.DS_Store
+
+# Agent instructions
+AGENTS.md
+CLAUDE.md
