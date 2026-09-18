@@ -5,6 +5,7 @@ import {
   resolvePolicies,
   uploadJsonFile,
 } from "@/lib/dataspace"
+import { validateInstance } from "@/lib/instance"
 import {
   buildKitMetadata,
   describeKitMetadata,
@@ -13,6 +14,12 @@ import {
 
 interface RegisterRequest {
   instance?: Record<string, unknown>
+  /** Validate and report, but do not touch the dataspace. */
+  dryRun?: boolean
+  /** Override the policies from the environment for this one offer. */
+  policies?: { accessPolicyId?: string; contractPolicyId?: string }
+  /** Manual sub-type selections for hierarchy levels the instance does not determine (path key → instance key). */
+  selections?: Record<string, string>
 }
 
 function slugify(value: string): string {
@@ -29,17 +36,6 @@ function slugify(value: string): string {
  * data offer (with policies) for it.
  */
 export async function POST(request: Request) {
-  const config = getDataspaceConfig()
-  if (!config) {
-    return Response.json(
-      {
-        error:
-          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
-      },
-      { status: 503 }
-    )
-  }
-
   let body: RegisterRequest
   try {
     body = await request.json()
@@ -55,6 +51,32 @@ export async function POST(request: Request) {
     )
   }
 
+  // The UI disables the button until the form is complete; the API is also
+  // called by scripts, so the same rule is enforced here.
+  const validation = validateInstance(instance, {
+    selections:
+      body.selections && typeof body.selections === "object" ? body.selections : undefined,
+  })
+  if (!validation.ok) {
+    const parts = [
+      validation.missing.length ? `missing: ${validation.missing.join(", ")}` : "",
+      Object.keys(validation.invalid).length
+        ? `invalid: ${Object.entries(validation.invalid)
+            .map(([k, v]) => `${k} (${v})`)
+            .join("; ")}`
+        : "",
+    ].filter(Boolean)
+    return Response.json(
+      {
+        error: `Instance is not complete — ${parts.join("; ")}`,
+        missing: validation.missing,
+        invalid: validation.invalid,
+        unknown: validation.unknown,
+      },
+      { status: 422 }
+    )
+  }
+
   const identifier =
     typeof instance["dcterms:identifier"] === "string"
       ? instance["dcterms:identifier"]
@@ -62,6 +84,33 @@ export async function POST(request: Request) {
         ? instance["dcterms:title"]
         : "rodeos-semantic-instance"
   const filename = `${slugify(identifier) || "rodeos-semantic-instance"}.json`
+
+  if (body.dryRun) {
+    return Response.json({
+      dryRun: true,
+      filename,
+      path: validation.path,
+      operationalPath: validation.operationalPath,
+      unknown: validation.unknown,
+      kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
+    })
+  }
+
+  const envConfig = getDataspaceConfig()
+  if (!envConfig) {
+    return Response.json(
+      {
+        error:
+          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
+      },
+      { status: 503 }
+    )
+  }
+  const config = {
+    ...envConfig,
+    accessPolicyId: body.policies?.accessPolicyId || envConfig.accessPolicyId,
+    contractPolicyId: body.policies?.contractPolicyId || envConfig.contractPolicyId,
+  }
 
   const title =
     typeof instance["dcterms:title"] === "string"
@@ -146,6 +195,7 @@ export async function POST(request: Request) {
       contractPolicyId: policies.contractPolicyId,
       policySource: policies.source,
       kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
+      unknown: validation.unknown,
     })
   } catch (err) {
     return Response.json(
