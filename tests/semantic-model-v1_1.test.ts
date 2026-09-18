@@ -12,6 +12,15 @@ const enumValues = (type: string) => parseFieldType(type).enumValues
 
 const AI_DEPLOYMENT =
   "https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Artificial%20Intelligence%20Deployment/1/0/IDTA%2002059-1-0_Template_AIDeployment.json"
+const TECHNICAL_DATA =
+  "https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Technical_Data/2/0/IDTA%2002003_Sample_TechnicalData.json"
+
+/**
+ * Every type atom parseFieldType understands, optionally wrapped in List[…].
+ * A typo in a new field type (or a type the app cannot render) fails here.
+ */
+const FIELD_TYPE =
+  /^(List\[)?(xsd:text|xsd:integer|xsd:decimal|xsd:boolean|xsd:anyUri|xsd:hexBinary|xsd:duration|skos:concept|schema:quantitativeValue|rodeos:jsonOrUri|rodeos:Requirement\[[a-z]+\]|enum\[[^\]]+\])\]?$/
 
 describe("semantic model v1.1", () => {
   it("carries a model version", () => {
@@ -36,15 +45,25 @@ describe("semantic model v1.1", () => {
     expect(software.optional).not.toHaveProperty("rodeos:softwareAssetType")
   })
 
+  it("lists the software sub-types in the order of the softwareAssetType enum", () => {
+    const values = enumValues(software.mandatory!["rodeos:softwareAssetType"])
+    expect(Object.keys(software.instances!)).toEqual(
+      values.map((v) => `rodeos:${v}`)
+    )
+  })
+
   it("requires a capability class matching the TP3.X building-block classes", () => {
-    expect(enumValues(software.mandatory!["rodeos:capabilityClass"])).toEqual([
-      "hardwareAccess",
-      "perception",
-      "manipulation",
-      "processExecution",
-      "humanRobotInteraction",
-      "foundationModel",
-    ])
+    const values = enumValues(software.mandatory!["rodeos:capabilityClass"])
+    expect([...values].sort()).toEqual(
+      [
+        "hardwareAccess",
+        "perception",
+        "manipulation",
+        "processExecution",
+        "humanRobotInteraction",
+        "foundationModel",
+      ].sort()
+    )
   })
 
   it("describes setup and runtime phases on every software component", () => {
@@ -56,9 +75,20 @@ describe("semantic model v1.1", () => {
     ]) {
       expect(software.optional![name]).toBe("List[xsd:text]")
     }
-    expect(parseFieldType(software.optional!["rodeos:interfaceProtocols"])).toMatchObject(
-      { kind: "enum", isList: true }
-    )
+    const protocols = parseFieldType(software.optional!["rodeos:interfaceProtocols"])
+    expect(protocols).toMatchObject({ kind: "enum", isList: true })
+    expect(protocols.enumValues).toEqual([
+      "REST",
+      "gRPC",
+      "OPC-UA",
+      "TCP-Socket",
+      "ROS2",
+      "MQTT",
+      "WebSocket",
+      "Python-API",
+      "CLI",
+    ])
+    // Ordinal progression — the order is part of the contract.
     expect(enumValues(software.optional!["rodeos:requiredObjectKnowledge"])).toEqual([
       "none",
       "category",
@@ -77,10 +107,11 @@ describe("semantic model v1.1", () => {
       "poseEstimation",
       "graspPointDetection",
       "calibration",
-      "labelingAnnotation",
     ]) {
       expect(values).toContain(v)
     }
+    // Labeling / annotation tooling has a single home: aiAnalyticsSoftware / dataLabeling.
+    expect(values).not.toContain("labelingAnnotation")
     expect(perception.defaultValues!["rodeos:aasSubmodel"]).toBe(AI_DEPLOYMENT)
   })
 
@@ -101,32 +132,65 @@ describe("semantic model v1.1", () => {
   })
 
   it("adds the three new sub-types with a type enum and an AAS default", () => {
-    const expected: Array<[string, string]> = [
-      ["rodeos:manipulationPlanningSoftware", "rodeos:manipulationPlanningSoftwareType"],
-      ["rodeos:taskPlanningSoftware", "rodeos:taskPlanningSoftwareType"],
-      ["rodeos:engineeringCommissioningSoftware", "rodeos:engineeringCommissioningSoftwareType"],
+    const expected: Array<[string, string, string[], string]> = [
+      [
+        "rodeos:manipulationPlanningSoftware",
+        "rodeos:manipulationPlanningSoftwareType",
+        [
+          "graspPlanning",
+          "pickPlanning",
+          "packPlanning",
+          "assemblySequencePlanning",
+          "forceControlledJoining",
+        ],
+        AI_DEPLOYMENT,
+      ],
+      [
+        "rodeos:taskPlanningSoftware",
+        "rodeos:taskPlanningSoftwareType",
+        [
+          "symbolicPlanning",
+          "llmBasedPlanning",
+          "hybridPlanning",
+          "schedulingOptimization",
+        ],
+        AI_DEPLOYMENT,
+      ],
+      [
+        "rodeos:engineeringCommissioningSoftware",
+        "rodeos:engineeringCommissioningSoftwareType",
+        [
+          "reachabilityAnalysis",
+          "cellLayoutPlanning",
+          "riskAssessment",
+          "safetyConfiguration",
+          "teaching",
+        ],
+        TECHNICAL_DATA,
+      ],
     ]
-    for (const [key, typeField] of expected) {
+    for (const [key, typeField, literals, aasDefault] of expected) {
       const node = software.instances![key]
       expect(node, key).toBeDefined()
-      expect(parseFieldType(node.mandatory![typeField]).kind).toBe("enum")
-      expect(node.mandatory!["rodeos:aasSubmodel"]).toBe("xsd:anyUri")
-      expect(node.defaultValues!["rodeos:aasSubmodel"]).toMatch(/^https:\/\//)
+      const parsed = parseFieldType(node.mandatory![typeField])
+      expect(parsed.kind, typeField).toBe("enum")
+      expect(parsed.enumValues, typeField).toEqual(literals)
+      expect(node.mandatory!["rodeos:aasSubmodel"], key).toBe("xsd:anyUri")
+      expect(node.defaultValues!["rodeos:aasSubmodel"], key).toBe(aasDefault)
     }
   })
 
-  it("contains only parseable field types", () => {
+  it("contains only field types the app understands, with defaults on declared fields", () => {
     const visit = (node: ModelNode, where: string) => {
-      for (const [name, type] of Object.entries({
-        ...node.mandatory,
-        ...node.optional,
-      })) {
-        expect(type, `${where}.${name}`).toMatch(
-          /^(List\[)?(xsd:|skos:|schema:|enum\[|rodeos:)/
-        )
+      const fields = { ...node.mandatory, ...node.optional }
+      for (const [name, type] of Object.entries(fields)) {
+        expect(type, `${where}.${name}`).toMatch(FIELD_TYPE)
         if (type.includes("enum[")) {
           expect(parseFieldType(type).enumValues.length, `${where}.${name}`).toBeGreaterThan(0)
         }
+      }
+      for (const name of Object.keys(node.defaultValues ?? {})) {
+        expect(Object.keys(fields), `${where} defaultValues.${name}`).toContain(name)
       }
       for (const [key, child] of Object.entries(node.instances ?? {})) {
         visit(child, `${where}/${key}`)
