@@ -218,13 +218,12 @@ export function ModelForm() {
       const nextSelections: Record<string, string> = {
         ...derivedFromPath.selections,
       }
-      const pathFields = new Set(SEMANTIC_AXIS.autoSelectors)
 
       const applied: string[] = []
       const suggestedNames: string[] = []
       const skipped: string[] = []
       for (const [name, value] of Object.entries(result.values ?? {})) {
-        if (pathFields.has(name)) continue
+        if (name in derivedFromPath.values) continue
         if (!(name in known)) {
           skipped.push(name)
           continue
@@ -235,7 +234,7 @@ export function ModelForm() {
 
       // Unverified LLM proposals — filled in, but flagged for review.
       for (const [name, value] of Object.entries(result.suggestions ?? {})) {
-        if (pathFields.has(name)) continue
+        if (name in derivedFromPath.values) continue
         if (!(name in known)) {
           skipped.push(name)
           continue
@@ -253,11 +252,20 @@ export function ModelForm() {
         if (nextValues[name] === undefined) nextValues[name] = def
       }
 
+      // The path the form will actually show. An LLM-supplied auto-selector
+      // value (e.g. rodeos:softwareAssetType when result.path stopped at
+      // softwareComponent) can take the hierarchy deeper than result.path.
+      const resolvedPath = computeLevels(
+        nextValues,
+        nextSelections,
+        SEMANTIC_AXIS
+      ).at(-1)!.path
+
       setValues(nextValues)
       setSelections(nextSelections)
       setSuggested(new Set(suggestedNames))
       return {
-        path,
+        path: resolvedPath,
         operationalPath,
         applied,
         suggested: suggestedNames,
