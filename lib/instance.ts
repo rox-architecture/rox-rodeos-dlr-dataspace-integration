@@ -61,7 +61,8 @@ function subtreeFieldNames(node: ModelNode): Set<string> {
 /**
  * Recover the manual sub-type selections an instance implies. Levels with an
  * auto-selector follow the field value; on the others the child whose
- * subtree declares the most fields present in the instance wins. A tie means
+ * subtree declares the most discriminating fields present in the instance
+ * wins — fields the walked path already declares do not count. A tie means
  * the instance does not say enough — the walk stops and the user picks.
  */
 export function inferSelections(
@@ -69,21 +70,31 @@ export function inferSelections(
   axis: Axis = SEMANTIC_AXIS
 ): Record<string, string> {
   const selections: Record<string, string> = {}
+  // Every key counts, null-valued ones included: the consumers skip those
+  // values later, but their presence still says which branch was meant.
   const keys = Object.keys(instance)
+  // Fields declared on the levels walked so far (rodeos:manufacturer is
+  // optional on hardwareComponent and mandatory on tooling) tell nothing
+  // about the branch below and are excluded from the scoring.
+  const inherited = new Set<string>()
   let node: ModelNode | undefined = axis.root
   const walked: string[] = []
 
   while (node?.instances && Object.keys(node.instances).length > 0) {
+    for (const name of Object.keys({ ...node.mandatory, ...node.optional })) {
+      inherited.add(name)
+    }
     let child: string | null = null
     const auto = autoSelectorField(node, axis.autoSelectors)
     if (auto) {
       const v = instance[auto]
       if (typeof v === "string" && v) child = `rodeos:${v}`
     } else {
+      const discriminating = keys.filter((k) => !inherited.has(k))
       const ranked = Object.entries(node.instances)
         .map(([key, sub]) => {
           const names = subtreeFieldNames(sub)
-          return { key, score: keys.filter((k) => names.has(k)).length }
+          return { key, score: discriminating.filter((k) => names.has(k)).length }
         })
         .filter((c) => c.score > 0)
         .sort((a, b) => b.score - a.score)
@@ -99,6 +110,15 @@ export function inferSelections(
   return selections
 }
 
+/** Caller-supplied state that complements what the instance itself says. */
+export interface InstanceOptions {
+  /**
+   * Manual sub-type selections (pathKey → instance key) for levels a flat
+   * document carries no discriminator for. They win over inferred ones.
+   */
+  selections?: Record<string, string>
+}
+
 /** Both axes resolved for one instance: the shared first step of the exports below. */
 interface ResolvedInstance {
   selections: Record<string, string>
@@ -111,10 +131,14 @@ interface ResolvedInstance {
   }
 }
 
-function resolveInstance(instance: Instance): ResolvedInstance {
+function resolveInstance(
+  instance: Instance,
+  options: InstanceOptions = {}
+): ResolvedInstance {
   const selections = {
     ...inferSelections(instance, SEMANTIC_AXIS),
     ...inferSelections(instance, OPERATIONAL_AXIS),
+    ...options.selections,
   }
   const semantic = computeLevels(instance, selections, SEMANTIC_AXIS)
   const operational = computeLevels(instance, selections, OPERATIONAL_AXIS)
@@ -149,11 +173,18 @@ export interface InstanceValidation {
 /**
  * Check a finished instance document against both model axes: every
  * mandatory field on the active paths must carry a valid value, optional
- * values must match their type, and the semantic hierarchy must be walked
- * down to a leaf. Keys the model does not declare are reported, not refused.
+ * values must match their type, and both hierarchies must be walked down to
+ * a leaf. Keys the model does not declare are reported, not refused.
+ *
+ * An absent mandatory non-list xsd:boolean is not missing: it is normalized
+ * to `false` and accepted, mirroring the form's checkbox semantics (an
+ * unticked box is a value, not a gap).
  */
-export function validateInstance(instance: Instance): InstanceValidation {
-  const { semantic, operational, fields } = resolveInstance(instance)
+export function validateInstance(
+  instance: Instance,
+  options: InstanceOptions = {}
+): InstanceValidation {
+  const { semantic, operational, fields } = resolveInstance(instance, options)
   const { mandatory, optional } = fields
 
   const missing: string[] = []
@@ -185,10 +216,25 @@ export function validateInstance(instance: Instance): InstanceValidation {
     else if (res.value !== undefined) normalized[name] = res.value
   }
 
-  // A level that still offers a manual sub-type choice is not finished.
-  const last = semantic[semantic.length - 1]
-  if (last.selectionOptions && !last.selectedChild) {
-    missing.push(`sub-type below ${last.path[last.path.length - 1] ?? "dcat:Resource"}`)
+  // A level that still has children but none selected is not finished —
+  // whether the choice is manual or an auto-selector whose value is absent
+  // or unusable. The auto-selector case is reported here only when the field
+  // itself is not already listed as missing or invalid.
+  const axes = [
+    { levels: semantic, axis: SEMANTIC_AXIS, rootLabel: "dcat:Resource" },
+    {
+      levels: operational,
+      axis: OPERATIONAL_AXIS,
+      rootLabel: "rodeos:OperationalProfile",
+    },
+  ]
+  for (const { levels, axis, rootLabel } of axes) {
+    const last = levels[levels.length - 1]
+    const children = Object.keys(last.node.instances ?? {})
+    if (children.length === 0 || last.selectedChild) continue
+    const auto = autoSelectorField(last.node, axis.autoSelectors)
+    if (auto && (missing.includes(auto) || auto in invalid)) continue
+    missing.push(`sub-type below ${last.path.at(-1) ?? rootLabel}`)
   }
 
   const known = new Set([...Object.keys(mandatory), ...Object.keys(optional)])
@@ -196,7 +242,7 @@ export function validateInstance(instance: Instance): InstanceValidation {
 
   return {
     ok: missing.length === 0 && Object.keys(invalid).length === 0,
-    path: last.path,
+    path: semantic[semantic.length - 1].path,
     operationalPath: operational[operational.length - 1].path,
     missing,
     invalid,
@@ -215,8 +261,14 @@ export interface FormState {
 }
 
 /** Translate an instance document into the state the form edits. */
-export function instanceToFormState(instance: Instance): FormState {
-  const { selections, semantic, operational, fields } = resolveInstance(instance)
+export function instanceToFormState(
+  instance: Instance,
+  options: InstanceOptions = {}
+): FormState {
+  const { selections, semantic, operational, fields } = resolveInstance(
+    instance,
+    options
+  )
   const known = { ...fields.mandatory, ...fields.optional }
 
   const values: Record<string, unknown> = {}

@@ -489,6 +489,12 @@ export function validateField(fieldType: string, raw: unknown): ValidationResult
     return { ok: true, value: out.length ? out : undefined }
   }
 
+  // Non-list scalars take one primitive. An array or object would otherwise
+  // be stringified ("Component" for ["Component"]) and pass the enum check
+  // although the hierarchy cannot descend on it.
+  if (raw !== null && typeof raw === "object") {
+    return { ok: false, error: "Expected a single value, not a list or object" }
+  }
   return validateScalar(parsed, String(raw ?? ""))
 }
 

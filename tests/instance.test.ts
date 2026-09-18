@@ -35,6 +35,56 @@ const software: Record<string, unknown> = {
   ],
 }
 
+/** The two auto-selected levels every hardware instance carries. */
+const hardwareBase: Record<string, unknown> = {
+  "rodeos:coreType": "Component",
+  "rodeos:componentType": "hardwareComponent",
+}
+
+/** Hardware instance whose field names single out tooling → gripperTool. */
+const gripper: Record<string, unknown> = {
+  ...hardwareBase,
+  "rodeos:gripperType": "Vacuum",
+  "rodeos:supplyVoltage": 24,
+}
+
+/** Hardware instance that says nothing a sub-type could be inferred from. */
+const tiedHardware: Record<string, unknown> = {
+  ...hardwareBase,
+  "rodeos:manufacturer": "X",
+  "rodeos:aasSubmodel": "https://example.org/a.json",
+}
+
+const SENSOR_SELECTIONS = {
+  "rodeos:Component/rodeos:hardwareComponent": "rodeos:sensor",
+  "rodeos:Component/rodeos:hardwareComponent/rodeos:sensor": "rodeos:visionSensor",
+}
+
+/** Minimal complete Dataset instance — without rodeos:isDataproduct on purpose. */
+const dataset: Record<string, unknown> = {
+  "dcterms:title": "Test dataset",
+  "dcterms:type": "Dataset",
+  "dcterms:publisher": "Test GmbH",
+  "dcterms:license": "https://creativecommons.org/licenses/by/4.0/",
+  "dcterms:identifier": "test-dataset",
+  "dcterms:description": "Rows of test data.",
+  "dcat:version": "1.0.0",
+  "dcat:keyword": ["test"],
+  "dcat:contactPoint": "someone@example.org",
+  "rodeos:coreType": "Dataset",
+  "dprod:informationSensitivityClassification": "public",
+  "dprod:type": "source-aligned",
+  "rodeos:dataFormat": "csv",
+  "dcat:byteSize": 1024,
+  "rodeos:operationalType": "static_file",
+  "rodeos:fileFormat": "csv",
+}
+
+/** Read straight from the model so the test does not hard-code the URL. */
+const GRIPPER_AAS_DEFAULT = SEMANTIC_AXIS.root.instances!["rodeos:Component"]
+  .instances!["rodeos:hardwareComponent"].instances!["rodeos:tooling"]
+  .instances!["rodeos:gripperTool"].defaultValues!["rodeos:aasSubmodel"]
+
 describe("validateInstance", () => {
   it("accepts a complete software instance", () => {
     const result = validateInstance(software)
@@ -87,16 +137,62 @@ describe("validateInstance", () => {
     expect(result.ok).toBe(false)
     expect(result.missing).toContain("sub-type below rodeos:hardwareComponent")
   })
+
+  it("rejects a list where the semantic auto-selector expects one value", () => {
+    const result = validateInstance({ ...software, "rodeos:coreType": ["Component"] })
+    expect(result.ok).toBe(false)
+    expect(result.invalid).toHaveProperty("rodeos:coreType")
+    expect(result.path).toEqual([])
+  })
+
+  it("rejects a list where the operational auto-selector expects one value", () => {
+    const result = validateInstance({
+      ...software,
+      "rodeos:operationalType": ["container"],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.invalid).toHaveProperty("rodeos:operationalType")
+    expect(result.operationalPath).toEqual([])
+  })
+
+  it("stops at a tie and asks for the sub-type", () => {
+    const tied = { ...hardwareBase, "rodeos:aasSubmodel": "https://example.org/a.json" }
+    expect(inferSelections(tied, SEMANTIC_AXIS)).toEqual({})
+    expect(validateInstance(tied).missing).toContain(
+      "sub-type below rodeos:hardwareComponent"
+    )
+  })
+
+  it("reports a missing operational mandatory", () => {
+    const withoutImage = Object.fromEntries(
+      Object.entries(software).filter(([k]) => k !== "rodeos:imageName")
+    )
+    expect(validateInstance(withoutImage).missing).toContain("rodeos:imageName")
+  })
+
+  it("reports a bogus auto-selector once, not twice", () => {
+    const result = validateInstance({ ...software, "rodeos:softwareAssetType": "nope" })
+    expect(result.ok).toBe(false)
+    expect(result.invalid).toHaveProperty("rodeos:softwareAssetType")
+    expect(result.path.at(-1)).toBe("rodeos:softwareComponent")
+    expect(result.missing).not.toContain("sub-type below rodeos:softwareComponent")
+  })
+
+  it("accepts an absent mandatory boolean as false", () => {
+    const result = validateInstance(dataset)
+    expect(result.ok).toBe(true)
+    expect(result.missing).toEqual([])
+    expect(result.normalized["rodeos:isDataproduct"]).toBe(false)
+  })
+
+  it("follows explicit selections where the instance ties", () => {
+    const result = validateInstance(tiedHardware, { selections: SENSOR_SELECTIONS })
+    expect(result.path.at(-1)).toBe("rodeos:visionSensor")
+  })
 })
 
 describe("inferSelections", () => {
   it("finds the hardware branch from field names", () => {
-    const gripper = {
-      "rodeos:coreType": "Component",
-      "rodeos:componentType": "hardwareComponent",
-      "rodeos:gripperType": "Vacuum",
-      "rodeos:supplyVoltage": 24,
-    }
     expect(inferSelections(gripper, SEMANTIC_AXIS)).toEqual({
       "rodeos:Component/rodeos:hardwareComponent": "rodeos:tooling",
       "rodeos:Component/rodeos:hardwareComponent/rodeos:tooling": "rodeos:gripperTool",
@@ -105,6 +201,15 @@ describe("inferSelections", () => {
 
   it("needs no selections for software", () => {
     expect(inferSelections(software, SEMANTIC_AXIS)).toEqual({})
+  })
+
+  it("ignores fields the walked path already declares", () => {
+    // rodeos:manufacturer is optional on hardwareComponent and mandatory on
+    // tooling — it must not make tooling the winner.
+    expect(inferSelections(tiedHardware, SEMANTIC_AXIS)).toEqual({})
+    expect(
+      inferSelections({ ...tiedHardware, "rodeos:resolution": "1280x720" }, SEMANTIC_AXIS)
+    ).toEqual(SENSOR_SELECTIONS)
   })
 })
 
@@ -123,5 +228,14 @@ describe("instanceToFormState", () => {
     expect(state.skipped).toEqual(["rodeos:colour"])
     expect(state.applied).toContain("dcterms:title")
     expect(state.path.at(-1)).toBe("rodeos:perceptionVisionSoftware")
+  })
+
+  it("recovers selections and model defaults for hardware", () => {
+    const state = instanceToFormState(gripper)
+    expect(state.selections).toEqual({
+      "rodeos:Component/rodeos:hardwareComponent": "rodeos:tooling",
+      "rodeos:Component/rodeos:hardwareComponent/rodeos:tooling": "rodeos:gripperTool",
+    })
+    expect(state.values["rodeos:aasSubmodel"]).toBe(GRIPPER_AAS_DEFAULT)
   })
 })
