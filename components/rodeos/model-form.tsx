@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator"
 import { FieldInput } from "@/components/rodeos/field-input"
 import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-panel"
 import { JsonPreview } from "@/components/rodeos/json-preview"
+import { toRawValue } from "@/lib/instance"
 import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
   autoSelectorValuesForPath,
@@ -47,25 +48,6 @@ export interface ApplySummary {
 }
 
 type RawValues = Record<string, unknown>
-
-function toRawValue(fieldType: string, value: unknown): unknown {
-  const parsed = parseFieldType(fieldType)
-  if (parsed.kind === "requirement") {
-    return Array.isArray(value) ? value : []
-  }
-  if (parsed.kind === "jsonOrUri") {
-    return typeof value === "string" ? value : JSON.stringify(value, null, 2)
-  }
-  if (parsed.kind === "boolean" && !parsed.isList) {
-    if (typeof value === "boolean") return value
-    return String(value).toLowerCase() === "true"
-  }
-  if (parsed.kind === "enum" && parsed.isList) {
-    return Array.isArray(value) ? value.map(String) : [String(value)]
-  }
-  if (parsed.isList && Array.isArray(value)) return value.join(", ")
-  return String(value)
-}
 
 /** Merge the mandatory/optional/default field maps of a level chain. */
 function mergeLevels(levels: Level[]) {
