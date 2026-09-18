@@ -188,8 +188,31 @@ export function ModelForm() {
   /** Apply an LLM autofill result: select the hierarchy path, then set values. */
   const applyAutofill = React.useCallback(
     (result: AutofillResponse): ApplySummary => {
-      const path = result.path
-      const fields = collectFieldsForPath(path)
+      // Pass 1: the form state that reproduces the path the LLM named.
+      const derivedFromPath = autoSelectorValuesForPath(result.path)
+      const nextValues: RawValues = { ...derivedFromPath.values }
+      const nextSelections: Record<string, string> = {
+        ...derivedFromPath.selections,
+      }
+
+      // Pass 2: an auto-selector value the LLM supplied for a level the path
+      // left open (e.g. rodeos:softwareAssetType when result.path stops at
+      // softwareComponent) takes the hierarchy deeper. The path is therefore
+      // resolved from the combined state before the known fields are read.
+      const suggestedSelectors: string[] = []
+      for (const name of SEMANTIC_AXIS.autoSelectors) {
+        if (name in nextValues) continue
+        const v = result.values?.[name] ?? result.suggestions?.[name]
+        if (typeof v !== "string" || !v) continue
+        nextValues[name] = v
+        if (result.values?.[name] === undefined) suggestedSelectors.push(name)
+      }
+      const resolvedPath = computeLevels(
+        nextValues,
+        nextSelections,
+        SEMANTIC_AXIS
+      ).at(-1)!.path
+      const fields = collectFieldsForPath(resolvedPath)
 
       // The operational axis is auto-selected by rodeos:operationalType, so
       // its path follows from the value the model proposed.
@@ -212,11 +235,12 @@ export function ModelForm() {
         ...operationalFields.optional,
       }
 
-      // Auto-selector values and manual selections that reproduce the path.
-      const derivedFromPath = autoSelectorValuesForPath(path)
-      const nextValues: RawValues = { ...derivedFromPath.values }
-      const nextSelections: Record<string, string> = {
-        ...derivedFromPath.selections,
+      // A pass-2 selector no level on the resolved path asks for is reported
+      // as skipped below and must not linger in the form state.
+      for (const name of SEMANTIC_AXIS.autoSelectors) {
+        if (!(name in derivedFromPath.values) && !(name in known)) {
+          delete nextValues[name]
+        }
       }
 
       const applied: string[] = []
@@ -243,6 +267,11 @@ export function ModelForm() {
         nextValues[name] = toRawValue(known[name], value)
         suggestedNames.push(name)
       }
+      // Pass-2 selectors taken from the suggestions are already set, so the
+      // loop above skipped them; they still need the amber marker.
+      suggestedNames.push(
+        ...suggestedSelectors.filter((name) => name in known)
+      )
 
       // Model defaults for the chosen paths (unless the LLM provided a value).
       for (const [name, def] of Object.entries({
@@ -251,15 +280,6 @@ export function ModelForm() {
       })) {
         if (nextValues[name] === undefined) nextValues[name] = def
       }
-
-      // The path the form will actually show. An LLM-supplied auto-selector
-      // value (e.g. rodeos:softwareAssetType when result.path stopped at
-      // softwareComponent) can take the hierarchy deeper than result.path.
-      const resolvedPath = computeLevels(
-        nextValues,
-        nextSelections,
-        SEMANTIC_AXIS
-      ).at(-1)!.path
 
       setValues(nextValues)
       setSelections(nextSelections)
