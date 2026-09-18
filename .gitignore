@@ -48,3 +48,6 @@ next-env.d.ts
 RODEOS-main/
 AGENTS.md
 CLAUDE.md
+building_blocks/
+.gitignore
+/docs/plans/
