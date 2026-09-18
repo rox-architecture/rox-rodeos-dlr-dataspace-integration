@@ -24,6 +24,7 @@ import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-p
 import { JsonPreview } from "@/components/rodeos/json-preview"
 import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
+  autoSelectorValuesForPath,
   collectFieldsForPath,
   computeLevels,
   instanceLabel,
@@ -211,28 +212,19 @@ export function ModelForm() {
         ...operationalFields.optional,
       }
 
-      const nextValues: RawValues = {}
-      const nextSelections: Record<string, string> = {}
-
-      // Derive auto-selector fields + manual selections from the path.
-      const walked: string[] = []
-      for (const key of path) {
-        const short = key.replace(/^rodeos:/, "")
-        if (walked.length === 0) {
-          nextValues["rodeos:coreType"] = short
-        } else if (short === "hardwareComponent" || short === "softwareComponent") {
-          nextValues["rodeos:componentType"] = short
-        } else {
-          nextSelections[pathKey(walked)] = key
-        }
-        walked.push(key)
+      // Auto-selector values and manual selections that reproduce the path.
+      const derivedFromPath = autoSelectorValuesForPath(path)
+      const nextValues: RawValues = { ...derivedFromPath.values }
+      const nextSelections: Record<string, string> = {
+        ...derivedFromPath.selections,
       }
+      const pathFields = new Set(SEMANTIC_AXIS.autoSelectors)
 
       const applied: string[] = []
       const suggestedNames: string[] = []
       const skipped: string[] = []
       for (const [name, value] of Object.entries(result.values ?? {})) {
-        if (name === "rodeos:coreType" || name === "rodeos:componentType") continue
+        if (pathFields.has(name)) continue
         if (!(name in known)) {
           skipped.push(name)
           continue
@@ -243,7 +235,7 @@ export function ModelForm() {
 
       // Unverified LLM proposals — filled in, but flagged for review.
       for (const [name, value] of Object.entries(result.suggestions ?? {})) {
-        if (name === "rodeos:coreType" || name === "rodeos:componentType") continue
+        if (pathFields.has(name)) continue
         if (!(name in known)) {
           skipped.push(name)
           continue

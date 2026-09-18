@@ -61,7 +61,11 @@ export interface Axis {
 export const SEMANTIC_AXIS: Axis = {
   id: "semantic",
   root: getResourceNode(),
-  autoSelectors: ["rodeos:coreType", "rodeos:componentType"],
+  autoSelectors: [
+    "rodeos:coreType",
+    "rodeos:componentType",
+    "rodeos:softwareAssetType",
+  ],
 }
 
 export const OPERATIONAL_AXIS: Axis = {
@@ -522,7 +526,7 @@ export interface Level {
  * "X" to the instance key "rodeos:X". The operational axis uses the same
  * rule via `rodeos:operationalType`.
  */
-function autoSelectorField(node: ModelNode, autoSelectors: string[]): string | null {
+export function autoSelectorField(node: ModelNode, autoSelectors: string[]): string | null {
   const fields = { ...node.mandatory, ...node.optional }
   for (const name of autoSelectors) {
     if (name in fields) return name
@@ -669,4 +673,29 @@ export function sanitizePath(
     }
   }
   return valid
+}
+
+/**
+ * Translate a hierarchy path into the form state that produces it: values
+ * for the auto-selector enums (coreType, componentType, softwareAssetType,
+ * operationalType) and manual selections for levels without one. Inverse of
+ * computeLevels, used when an LLM result or an imported instance names a path.
+ */
+export function autoSelectorValuesForPath(
+  path: string[],
+  axis: Axis = SEMANTIC_AXIS
+): { values: Record<string, string>; selections: Record<string, string> } {
+  const values: Record<string, string> = {}
+  const selections: Record<string, string> = {}
+  let node: ModelNode | undefined = axis.root
+  const walked: string[] = []
+  for (const key of path) {
+    if (!node?.instances || !(key in node.instances)) break
+    const auto = autoSelectorField(node, axis.autoSelectors)
+    if (auto) values[auto] = key.replace(/^rodeos:/, "")
+    else selections[pathKey(walked, axis.id)] = key
+    walked.push(key)
+    node = node.instances[key]
+  }
+  return { values, selections }
 }
