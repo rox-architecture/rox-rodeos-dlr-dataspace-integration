@@ -16,6 +16,8 @@ build
 # Not needed to serve a request
 RODEOS-main/
 design/
+building_blocks/
+docs/
 .git
 .gitignore
 .vscode
