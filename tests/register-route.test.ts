@@ -1,31 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { POST } from "@/app/api/dataspace/register/route"
-
-const complete: Record<string, unknown> = {
-  "dcterms:title": "Test pose estimator",
-  "dcterms:type": "softwareComponent",
-  "dcterms:publisher": "Test GmbH",
-  "dcterms:license": "https://www.apache.org/licenses/LICENSE-2.0",
-  "dcterms:identifier": "Test Pose Estimator",
-  "dcterms:description": "Estimates poses.",
-  "dcat:version": "1.0.0",
-  "dcat:keyword": ["pose estimation", "test"],
-  "dcat:contactPoint": "someone@example.org",
-  "rodeos:coreType": "Component",
-  "rodeos:componentType": "softwareComponent",
-  "rodeos:softwareAssetType": "perceptionVisionSoftware",
-  "rodeos:capabilityClass": "perception",
-  "rodeos:perceptionVisionSoftwareType": "poseEstimation",
-  "rodeos:aasSubmodel": "https://example.org/aas.json",
-  "rodeos:operationalType": "container",
-  "rodeos:distributionType": "oci_registry",
-  "rodeos:imageName": "test/pose",
-  "rodeos:imageTag": "1.0.0",
-  "rodeos:platforms": ["linux/amd64"],
-  "rodeos:hardwareRequirements": [
-    { subject: "hardware.compute.gpu", operator: "required" },
-  ],
-}
+import { complete } from "./fixtures/instance"
 
 const post = (body: unknown) =>
   POST(
@@ -85,6 +60,13 @@ describe("POST /api/dataspace/register", () => {
     expect(body.kitMetadata).toMatch(/^container/)
   })
 
+  it("reports keys the model does not declare as unknown in a dry run", async () => {
+    const res = await post({ instance: { ...complete, "x:extra": 1 }, dryRun: true })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.unknown).toEqual(["x:extra"])
+  })
+
   it("honours explicit selections in a dry run", async () => {
     const hardware = {
       ...complete,
@@ -118,6 +100,20 @@ describe("POST /api/dataspace/register", () => {
     const body = await res.json()
     expect(res.status, JSON.stringify(body)).toBe(200)
     expect(body.path.at(-1)).toBe("rodeos:visionSensor")
+  })
+
+  it("only treats the boolean true as a dry run", async () => {
+    // A string "false" must not be read as truthy — this call is a real
+    // registration attempt and therefore hits the missing configuration.
+    const res = await post({ instance: complete, dryRun: "false" })
+    expect(res.status).toBe(503)
+  })
+
+  it("refuses a policy override that gives only one of the two ids", async () => {
+    const res = await post({ instance: complete, policies: { accessPolicyId: "A" } })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/both accessPolicyId and contractPolicyId/)
   })
 
   it("reports missing configuration only after validation passed", async () => {

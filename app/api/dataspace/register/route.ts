@@ -85,7 +85,9 @@ export async function POST(request: Request) {
         : "rodeos-semantic-instance"
   const filename = `${slugify(identifier) || "rodeos-semantic-instance"}.json`
 
-  if (body.dryRun) {
+  // Only the boolean counts: a string like "false" is truthy and would turn a
+  // real registration into a silent no-op that still answers 200.
+  if (body.dryRun === true) {
     return Response.json({
       dryRun: true,
       filename,
@@ -94,6 +96,24 @@ export async function POST(request: Request) {
       unknown: validation.unknown,
       kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
     })
+  }
+
+  // Half an override would silently take the other id from the environment and
+  // offer the asset under a policy pair nobody asked for.
+  const override = body.policies
+  if (override && typeof override === "object") {
+    const hasAccess = typeof override.accessPolicyId === "string" && override.accessPolicyId !== ""
+    const hasContract =
+      typeof override.contractPolicyId === "string" && override.contractPolicyId !== ""
+    if (hasAccess !== hasContract) {
+      return Response.json(
+        {
+          error:
+            "A policy override needs both accessPolicyId and contractPolicyId — giving only one would mix it with the policy from the environment.",
+        },
+        { status: 400 }
+      )
+    }
   }
 
   const envConfig = getDataspaceConfig()
