@@ -3,10 +3,14 @@
  * Register instance documents through a running RODEOS app.
  *
  *   node scripts/register-instances.mjs [--dry-run] [--base=http://localhost:3000]
- *        [--policy=<policyId>] <instance.json> [...]
+ *        [--policy=<id> | --access-policy=<id> --contract-policy=<id>] <instance.json> [...]
  *
- * --dry-run   validate only (works without dataspace configuration)
- * --policy    use this policy id as access and contract policy for these offers
+ * --dry-run          validate only (works without dataspace configuration)
+ * --policy           use this policy id as both access and contract policy
+ * --access-policy    who may SEE the offer in the catalog — a restrictive one
+ *                    here hides the asset from the federated catalog entirely
+ * --contract-policy  who may NEGOTIATE it; this is where a group restriction
+ *                    belongs, so the offer stays findable
  *
  * Files still containing the token PLACEHOLDER are validated but never
  * registered — the values have to be replaced first.
@@ -22,11 +26,22 @@ const base = (
   flag("base") ?? process.env.RODEOS_BASE_URL ?? "http://localhost:3000"
 ).replace(/\/$/, "")
 const policy = flag("policy")
+const accessPolicy = flag("access-policy") ?? policy
+const contractPolicy = flag("contract-policy") ?? policy
 const files = args.filter((a) => !a.startsWith("--"))
+
+// The API refuses a half-given override, so say so before reading any file.
+if (Boolean(accessPolicy) !== Boolean(contractPolicy)) {
+  console.error(
+    "--access-policy and --contract-policy have to be given together (or use --policy for both)"
+  )
+  process.exit(2)
+}
 
 if (files.length === 0) {
   console.error(
-    "usage: node scripts/register-instances.mjs [--dry-run] [--base=URL] [--policy=ID] <instance.json>..."
+    "usage: node scripts/register-instances.mjs [--dry-run] [--base=URL] " +
+      "[--policy=ID | --access-policy=ID --contract-policy=ID] <instance.json>..."
   )
   process.exit(2)
 }
@@ -61,7 +76,11 @@ for (const file of files) {
   }
 
   const body = { instance, dryRun }
-  if (policy) body.policies = { accessPolicyId: policy, contractPolicyId: policy }
+  if (accessPolicy)
+    body.policies = {
+      accessPolicyId: accessPolicy,
+      contractPolicyId: contractPolicy,
+    }
 
   let res, json
   try {
@@ -98,7 +117,7 @@ for (const file of files) {
     console.log(`    unknown keys kept as-is: ${json.unknown.join(", ")}`)
   if (!dryRun)
     console.log(
-      `    connector ${json.connector}, policy ${json.accessPolicyId} (${json.policySource})`
+      `    connector ${json.connector}, access ${json.accessPolicyId} / contract ${json.contractPolicyId} (${json.policySource})`
     )
 }
 

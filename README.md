@@ -287,6 +287,21 @@ node scripts/register-instances.mjs --policy=<id> instances/*.json  # register
 
 Files still containing the token `PLACEHOLDER` are never registered.
 
+**Access policy vs. contract policy.** The two are not interchangeable. The
+*access* policy decides who may **see** the offer: a connector only returns
+datasets to a catalog request whose access policy the requester satisfies, and
+the federated catalog is a central crawl, so a group-restricted access policy
+hides the asset from that catalog for everyone — including members of that very
+group. A group restriction therefore belongs on the *contract* policy, which
+decides who may **negotiate**; the offer then stays findable and only the
+transfer is restricted. Use `--access-policy` and `--contract-policy` for that
+split (`--policy` sets both and is the permissive-everywhere case):
+
+```bash
+node scripts/register-instances.mjs \
+  --access-policy=all --contract-policy=group-rox-only instances/*.json
+```
+
 The **entire semantic model instance is attached as asset properties**: every
 field becomes a top-level property (e.g. `rodeos:payload`, `dcterms:title`),
 so assets can be found via the catalog's metadata search and query filters
