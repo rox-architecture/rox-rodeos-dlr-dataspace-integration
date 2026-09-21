@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator"
 import { FieldInput } from "@/components/rodeos/field-input"
 import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-panel"
 import { JsonPreview } from "@/components/rodeos/json-preview"
-import { toRawValue } from "@/lib/instance"
+import { instanceToFormState, toRawValue } from "@/lib/instance"
 import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
   autoSelectorValuesForPath,
@@ -277,6 +277,26 @@ export function ModelForm() {
     []
   )
 
+  /** Load a finished instance document (JSON import) into the form. */
+  const applyInstance = React.useCallback(
+    (instance: Record<string, unknown>): ApplySummary => {
+      const state = instanceToFormState(instance)
+      setValues(state.values)
+      setSelections(state.selections)
+      // An imported document is a finished instance, not a proposal — nothing
+      // in it needs the yellow "verify this" treatment.
+      setSuggested(new Set())
+      return {
+        path: state.path,
+        operationalPath: state.operationalPath,
+        applied: state.applied,
+        suggested: [],
+        skipped: state.skipped,
+      }
+    },
+    []
+  )
+
   const onSelectChild = React.useCallback((level: Level, child: string) => {
     setSelections((prev) => ({
       ...prev,
@@ -315,6 +335,7 @@ export function ModelForm() {
         <AssistPanel onApply={applyAutofill} />
         <JsonPreview
           data={output}
+          onImport={applyInstance}
           missingMandatory={missingMandatory}
           suggested={[...suggested]}
           invalidCount={Object.keys(errors).length}
