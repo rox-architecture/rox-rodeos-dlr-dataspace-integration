@@ -30,6 +30,35 @@ adapts; no code changes required.
 
 The running app also serves it at [`/api/semantic-model`](http://localhost:3000/api/semantic-model).
 
+### Model version 1.1 (September 2026)
+
+Additions for the RoX software building blocks (TP3.X). All changes are
+backwards compatible: existing instances stay valid.
+
+- **`rodeos:softwareAssetType`** is now a mandatory enum on
+  `rodeos:softwareComponent` and selects the sub-type, like `rodeos:coreType`
+  and `rodeos:componentType` do. The sub-type is thereby explicit in the
+  instance and filterable in the catalog.
+- **`rodeos:capabilityClass`** (mandatory on software): the building-block
+  class `hardwareAccess`, `perception`, `manipulation`, `processExecution`,
+  `humanRobotInteraction` or `foundationModel`.
+- **Phases:** `rodeos:setupInputs`, `rodeos:setupOutputs`,
+  `rodeos:runtimeInputs`, `rodeos:runtimeOutputs` (lists of short phrases),
+  plus `rodeos:interfaceProtocols`, `rodeos:requiredObjectKnowledge`
+  (`none | category | cadModel | trainedModel`) and
+  `rodeos:supportsContinuousLearning`.
+- **On every resource:** `rodeos:trl`, `rodeos:relevantUseCases`,
+  `rodeos:dependsOn` and `rodeos:producesAsset` (identifiers of other assets).
+- **New sub-types:** `rodeos:manipulationPlanningSoftware`,
+  `rodeos:taskPlanningSoftware`, `rodeos:engineeringCommissioningSoftware`.
+- **Extended enums:** perception types (`instanceSegmentation`,
+  `poseEstimation`, `graspPointDetection`, `calibration`) and AI analytics
+  types (`foundationModel`, `llmApplication`, `uncertaintyQuantification`,
+  `dataLabeling`, `reinforcementLearning`).
+- **AAS default** for AI software is the IDTA 02059 *AI Deployment* template.
+
+The file carries its version in `_version`.
+
 ### The operational model
 
 > **[`operational_model.json`](./operational_model.json)** — the second axis.
@@ -213,6 +242,8 @@ Default model   (use "Test connection" and click one of the listed ids)
    than documented.
 4. **Export** — the generated instance is previewed live as JSON, with
    completeness tracking of mandatory fields, and can be copied or downloaded.
+   The upload icon next to *Copy* imports a previously exported instance back
+   into the form.
 5. **Register in the dataspace** — once all mandatory fields are valid, the
    green *Register asset in Data Space* button publishes the instance to the
    DLR dataspace (see below).
@@ -239,6 +270,22 @@ operated by the DLR Institute for AI Safety and Security):
 3. **Offer** — creates the data offer (`POST /ui/{connector}/assets`) with
    name, description, `offerType: data` and RODEOS metadata, making the asset
    visible in the federated catalog.
+
+The API validates every instance against both models before it touches the
+dataspace and answers `422` with the missing and invalid fields otherwise.
+`{"instance": …, "dryRun": true}` returns that validation without
+registering, and `{"policies": {"accessPolicyId", "contractPolicyId"}}`
+overrides the policies from the environment for one offer (both ids or
+neither).
+
+To register instance files from the command line against a running app:
+
+```bash
+node scripts/register-instances.mjs --dry-run instances/*.json      # validate
+node scripts/register-instances.mjs --policy=<id> instances/*.json  # register
+```
+
+Files still containing the token `PLACEHOLDER` are never registered.
 
 The **entire semantic model instance is attached as asset properties**: every
 field becomes a top-level property (e.g. `rodeos:payload`, `dcterms:title`),
@@ -411,7 +458,10 @@ lib/semantic-model.ts    model parsing, type system, validation, hierarchy
 lib/kit-metadata.ts      projection onto the KIT specification, derivations
 lib/settings.ts          runtime provider configuration (server-side storage)
 lib/llm.ts               provider abstraction (OpenAI-compatible / Ollama)
+lib/instance.ts          validate finished instance documents, JSON import
 scripts/kiosk.mjs        cross-platform kiosk launcher
+scripts/register-instances.mjs  validate / register instance files via the API
+tests/                   vitest unit tests for lib/ (npm test)
 design/                  RoX design system (tokens, previews, brand assets)
 ```
 
