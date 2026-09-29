@@ -21,19 +21,50 @@ export interface DataspaceConfig {
   contractPolicyId?: string
 }
 
-export function getDataspaceConfig(): DataspaceConfig | null {
-  const apiKey = process.env.DATASPACE_API_KEY
-  const connector = process.env.DATASPACE_CONNECTOR
+export const DEFAULT_DATASPACE_API_URL = "https://vision-x-api.base-x-ecosystem.org"
+
+/** Connection details a single caller brings along instead of using the server's. */
+export interface DataspaceOverrides {
+  apiUrl?: string
+  apiKey?: string
+  connector?: string
+}
+
+const trimmed = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined
+  const clean = value.trim()
+  return clean === "" ? undefined : clean
+}
+
+/**
+ * Build the connection to use for one call. Per-request details win over the
+ * server environment field by field, so a deployment can serve users who each
+ * bring their own connector while a local run with a filled .env needs no
+ * input at all.
+ */
+export function resolveDataspaceConfig(
+  overrides?: DataspaceOverrides
+): DataspaceConfig | null {
+  const apiKey = trimmed(overrides?.apiKey) ?? trimmed(process.env.DATASPACE_API_KEY)
+  const connector =
+    trimmed(overrides?.connector) ?? trimmed(process.env.DATASPACE_CONNECTOR)
   if (!apiKey || !connector) return null
   return {
     apiUrl: (
-      process.env.DATASPACE_API_URL || "https://vision-x-api.base-x-ecosystem.org"
+      trimmed(overrides?.apiUrl) ??
+      trimmed(process.env.DATASPACE_API_URL) ??
+      DEFAULT_DATASPACE_API_URL
     ).replace(/\/$/, ""),
     apiKey,
     connector,
     accessPolicyId: process.env.DATASPACE_ACCESS_POLICY_ID || undefined,
     contractPolicyId: process.env.DATASPACE_CONTRACT_POLICY_ID || undefined,
   }
+}
+
+/** The connection the server environment alone provides, if it is complete. */
+export function getDataspaceConfig(): DataspaceConfig | null {
+  return resolveDataspaceConfig()
 }
 
 async function api(

@@ -1,7 +1,7 @@
 import {
   createOffer,
   getConnectorInfo,
-  getDataspaceConfig,
+  resolveDataspaceConfig,
   resolvePolicies,
   uploadJsonFile,
 } from "@/lib/dataspace"
@@ -20,6 +20,8 @@ interface RegisterRequest {
   policies?: { accessPolicyId?: string; contractPolicyId?: string }
   /** Manual sub-type selections for hierarchy levels the instance does not determine (path key → instance key). */
   selections?: Record<string, string>
+  /** Connection details for this call; each field falls back to the server environment. */
+  dataspace?: { apiUrl?: string; apiKey?: string; connector?: string }
 }
 
 function slugify(value: string): string {
@@ -116,12 +118,14 @@ export async function POST(request: Request) {
     }
   }
 
-  const envConfig = getDataspaceConfig()
+  const envConfig = resolveDataspaceConfig(
+    body.dataspace && typeof body.dataspace === "object" ? body.dataspace : undefined
+  )
   if (!envConfig) {
     return Response.json(
       {
         error:
-          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
+          "Dataspace access is not configured. Enter API key and connector in the Data Space connection panel, or set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
       },
       { status: 503 }
     )
@@ -150,7 +154,7 @@ export async function POST(request: Request) {
         {
           error: `Connector "${config.connector}" not found. Your API key has access to: ${
             available.join(", ") || "none"
-          }. Check DATASPACE_CONNECTOR in the server environment.`,
+          }. Check the connector name in the Data Space connection panel (or DATASPACE_CONNECTOR in the server environment).`,
         },
         { status: 400 }
       )
@@ -158,7 +162,7 @@ export async function POST(request: Request) {
     if (connector.storageType === "HttpData") {
       return Response.json(
         {
-          error: `Connector "${config.connector}" is an HttpData connector without file storage — the dataspace cannot store the JSON there. Create an S3-backed connector in the dataspace dashboard (Dashboard → Connectors → storage type Amazon S3) and set DATASPACE_CONNECTOR to its name.`,
+          error: `Connector "${config.connector}" is an HttpData connector without file storage — the dataspace cannot store the JSON there. Create an S3-backed connector in the dataspace dashboard (Dashboard → Connectors → storage type Amazon S3) and use its name as the connector.`,
         },
         { status: 400 }
       )

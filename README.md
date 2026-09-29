@@ -271,6 +271,14 @@ operated by the DLR Institute for AI Safety and Security):
    name, description, `offerType: data` and RODEOS metadata, making the asset
    visible in the federated catalog.
 
+Where an asset gets registered is set in the **Data Space connection** panel at
+the top of the right column: API URL, API key and connector. On a local run
+these are prefilled from the server environment and nothing has to be entered.
+On a deployment each visitor brings their own — the fields are kept for that
+browser session only, are sent with the registration request, and each one
+falls back to the server environment when left empty. The server never hands
+out its own API key; it only reports that one is configured.
+
 The API validates every instance against both models before it touches the
 dataspace and answers `422` with the missing and invalid fields otherwise.
 `{"instance": …, "dryRun": true}` returns that validation without

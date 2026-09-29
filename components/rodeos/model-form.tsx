@@ -22,6 +22,10 @@ import { Separator } from "@/components/ui/separator"
 import { FieldInput } from "@/components/rodeos/field-input"
 import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-panel"
 import { JsonPreview } from "@/components/rodeos/json-preview"
+import {
+  DataspaceConnectionCard,
+  DataspaceConnectionProvider,
+} from "@/components/rodeos/dataspace-connection"
 import { instanceToFormState, toRawValue } from "@/lib/instance"
 import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
@@ -307,6 +311,7 @@ export function ModelForm() {
   const allLevels = [...semanticLevels, ...operationalLevels]
 
   return (
+    <DataspaceConnectionProvider>
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,38rem)]">
       <div className="flex min-w-0 flex-col gap-4">
         {allLevels.map((level, i) => (
@@ -332,6 +337,7 @@ export function ModelForm() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
+        <DataspaceConnectionCard />
         <AssistPanel onApply={applyAutofill} />
         <JsonPreview
           data={output}
@@ -342,6 +348,7 @@ export function ModelForm() {
         />
       </div>
     </div>
+    </DataspaceConnectionProvider>
   )
 }
 
