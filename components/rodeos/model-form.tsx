@@ -22,8 +22,14 @@ import { Separator } from "@/components/ui/separator"
 import { FieldInput } from "@/components/rodeos/field-input"
 import { AssistPanel, type AutofillResponse } from "@/components/rodeos/assist-panel"
 import { JsonPreview } from "@/components/rodeos/json-preview"
+import {
+  DataspaceConnectionCard,
+  DataspaceConnectionProvider,
+} from "@/components/rodeos/dataspace-connection"
+import { instanceToFormState, toRawValue } from "@/lib/instance"
 import { deriveOperationalValues } from "@/lib/kit-metadata"
 import {
+  autoSelectorValuesForPath,
   collectFieldsForPath,
   computeLevels,
   instanceLabel,
@@ -46,25 +52,6 @@ export interface ApplySummary {
 }
 
 type RawValues = Record<string, unknown>
-
-function toRawValue(fieldType: string, value: unknown): unknown {
-  const parsed = parseFieldType(fieldType)
-  if (parsed.kind === "requirement") {
-    return Array.isArray(value) ? value : []
-  }
-  if (parsed.kind === "jsonOrUri") {
-    return typeof value === "string" ? value : JSON.stringify(value, null, 2)
-  }
-  if (parsed.kind === "boolean" && !parsed.isList) {
-    if (typeof value === "boolean") return value
-    return String(value).toLowerCase() === "true"
-  }
-  if (parsed.kind === "enum" && parsed.isList) {
-    return Array.isArray(value) ? value.map(String) : [String(value)]
-  }
-  if (parsed.isList && Array.isArray(value)) return value.join(", ")
-  return String(value)
-}
 
 /** Merge the mandatory/optional/default field maps of a level chain. */
 function mergeLevels(levels: Level[]) {
@@ -187,8 +174,31 @@ export function ModelForm() {
   /** Apply an LLM autofill result: select the hierarchy path, then set values. */
   const applyAutofill = React.useCallback(
     (result: AutofillResponse): ApplySummary => {
-      const path = result.path
-      const fields = collectFieldsForPath(path)
+      // Pass 1: the form state that reproduces the path the LLM named.
+      const derivedFromPath = autoSelectorValuesForPath(result.path)
+      const nextValues: RawValues = { ...derivedFromPath.values }
+      const nextSelections: Record<string, string> = {
+        ...derivedFromPath.selections,
+      }
+
+      // Pass 2: an auto-selector value the LLM supplied for a level the path
+      // left open (e.g. rodeos:softwareAssetType when result.path stops at
+      // softwareComponent) takes the hierarchy deeper. The path is therefore
+      // resolved from the combined state before the known fields are read.
+      const suggestedSelectors: string[] = []
+      for (const name of SEMANTIC_AXIS.autoSelectors) {
+        if (name in nextValues) continue
+        const v = result.values?.[name] ?? result.suggestions?.[name]
+        if (typeof v !== "string" || !v) continue
+        nextValues[name] = v
+        if (result.values?.[name] === undefined) suggestedSelectors.push(name)
+      }
+      const resolvedPath = computeLevels(
+        nextValues,
+        nextSelections,
+        SEMANTIC_AXIS
+      ).at(-1)!.path
+      const fields = collectFieldsForPath(resolvedPath)
 
       // The operational axis is auto-selected by rodeos:operationalType, so
       // its path follows from the value the model proposed.
@@ -211,28 +221,19 @@ export function ModelForm() {
         ...operationalFields.optional,
       }
 
-      const nextValues: RawValues = {}
-      const nextSelections: Record<string, string> = {}
-
-      // Derive auto-selector fields + manual selections from the path.
-      const walked: string[] = []
-      for (const key of path) {
-        const short = key.replace(/^rodeos:/, "")
-        if (walked.length === 0) {
-          nextValues["rodeos:coreType"] = short
-        } else if (short === "hardwareComponent" || short === "softwareComponent") {
-          nextValues["rodeos:componentType"] = short
-        } else {
-          nextSelections[pathKey(walked)] = key
+      // A pass-2 selector no level on the resolved path asks for is reported
+      // as skipped below and must not linger in the form state.
+      for (const name of SEMANTIC_AXIS.autoSelectors) {
+        if (!(name in derivedFromPath.values) && !(name in known)) {
+          delete nextValues[name]
         }
-        walked.push(key)
       }
 
       const applied: string[] = []
       const suggestedNames: string[] = []
       const skipped: string[] = []
       for (const [name, value] of Object.entries(result.values ?? {})) {
-        if (name === "rodeos:coreType" || name === "rodeos:componentType") continue
+        if (name in derivedFromPath.values) continue
         if (!(name in known)) {
           skipped.push(name)
           continue
@@ -243,7 +244,7 @@ export function ModelForm() {
 
       // Unverified LLM proposals — filled in, but flagged for review.
       for (const [name, value] of Object.entries(result.suggestions ?? {})) {
-        if (name === "rodeos:coreType" || name === "rodeos:componentType") continue
+        if (name in derivedFromPath.values) continue
         if (!(name in known)) {
           skipped.push(name)
           continue
@@ -252,6 +253,11 @@ export function ModelForm() {
         nextValues[name] = toRawValue(known[name], value)
         suggestedNames.push(name)
       }
+      // Pass-2 selectors taken from the suggestions are already set, so the
+      // loop above skipped them; they still need the amber marker.
+      suggestedNames.push(
+        ...suggestedSelectors.filter((name) => name in known)
+      )
 
       // Model defaults for the chosen paths (unless the LLM provided a value).
       for (const [name, def] of Object.entries({
@@ -265,11 +271,31 @@ export function ModelForm() {
       setSelections(nextSelections)
       setSuggested(new Set(suggestedNames))
       return {
-        path,
+        path: resolvedPath,
         operationalPath,
         applied,
         suggested: suggestedNames,
         skipped,
+      }
+    },
+    []
+  )
+
+  /** Load a finished instance document (JSON import) into the form. */
+  const applyInstance = React.useCallback(
+    (instance: Record<string, unknown>): ApplySummary => {
+      const state = instanceToFormState(instance)
+      setValues(state.values)
+      setSelections(state.selections)
+      // An imported document is a finished instance, not a proposal — nothing
+      // in it needs the yellow "verify this" treatment.
+      setSuggested(new Set())
+      return {
+        path: state.path,
+        operationalPath: state.operationalPath,
+        applied: state.applied,
+        suggested: [],
+        skipped: state.skipped,
       }
     },
     []
@@ -285,6 +311,7 @@ export function ModelForm() {
   const allLevels = [...semanticLevels, ...operationalLevels]
 
   return (
+    <DataspaceConnectionProvider>
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] xl:grid-cols-[minmax(0,1fr)_minmax(0,32rem)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,38rem)]">
       <div className="flex min-w-0 flex-col gap-4">
         {allLevels.map((level, i) => (
@@ -310,15 +337,18 @@ export function ModelForm() {
       </div>
 
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
+        <DataspaceConnectionCard />
         <AssistPanel onApply={applyAutofill} />
         <JsonPreview
           data={output}
+          onImport={applyInstance}
           missingMandatory={missingMandatory}
           suggested={[...suggested]}
           invalidCount={Object.keys(errors).length}
         />
       </div>
     </div>
+    </DataspaceConnectionProvider>
   )
 }
 

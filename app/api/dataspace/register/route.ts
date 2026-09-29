@@ -1,10 +1,11 @@
 import {
   createOffer,
   getConnectorInfo,
-  getDataspaceConfig,
+  resolveDataspaceConfig,
   resolvePolicies,
   uploadJsonFile,
 } from "@/lib/dataspace"
+import { validateInstance } from "@/lib/instance"
 import {
   buildKitMetadata,
   describeKitMetadata,
@@ -13,6 +14,14 @@ import {
 
 interface RegisterRequest {
   instance?: Record<string, unknown>
+  /** Validate and report, but do not touch the dataspace. */
+  dryRun?: boolean
+  /** Override the policies from the environment for this one offer. */
+  policies?: { accessPolicyId?: string; contractPolicyId?: string }
+  /** Manual sub-type selections for hierarchy levels the instance does not determine (path key → instance key). */
+  selections?: Record<string, string>
+  /** Connection details for this call; each field falls back to the server environment. */
+  dataspace?: { apiUrl?: string; apiKey?: string; connector?: string }
 }
 
 function slugify(value: string): string {
@@ -29,17 +38,6 @@ function slugify(value: string): string {
  * data offer (with policies) for it.
  */
 export async function POST(request: Request) {
-  const config = getDataspaceConfig()
-  if (!config) {
-    return Response.json(
-      {
-        error:
-          "Dataspace access is not configured. Set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
-      },
-      { status: 503 }
-    )
-  }
-
   let body: RegisterRequest
   try {
     body = await request.json()
@@ -55,6 +53,32 @@ export async function POST(request: Request) {
     )
   }
 
+  // The UI disables the button until the form is complete; the API is also
+  // called by scripts, so the same rule is enforced here.
+  const validation = validateInstance(instance, {
+    selections:
+      body.selections && typeof body.selections === "object" ? body.selections : undefined,
+  })
+  if (!validation.ok) {
+    const parts = [
+      validation.missing.length ? `missing: ${validation.missing.join(", ")}` : "",
+      Object.keys(validation.invalid).length
+        ? `invalid: ${Object.entries(validation.invalid)
+            .map(([k, v]) => `${k} (${v})`)
+            .join("; ")}`
+        : "",
+    ].filter(Boolean)
+    return Response.json(
+      {
+        error: `Instance is not complete — ${parts.join("; ")}`,
+        missing: validation.missing,
+        invalid: validation.invalid,
+        unknown: validation.unknown,
+      },
+      { status: 422 }
+    )
+  }
+
   const identifier =
     typeof instance["dcterms:identifier"] === "string"
       ? instance["dcterms:identifier"]
@@ -62,6 +86,55 @@ export async function POST(request: Request) {
         ? instance["dcterms:title"]
         : "rodeos-semantic-instance"
   const filename = `${slugify(identifier) || "rodeos-semantic-instance"}.json`
+
+  // Only the boolean counts: a string like "false" is truthy and would turn a
+  // real registration into a silent no-op that still answers 200.
+  if (body.dryRun === true) {
+    return Response.json({
+      dryRun: true,
+      filename,
+      path: validation.path,
+      operationalPath: validation.operationalPath,
+      unknown: validation.unknown,
+      kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
+    })
+  }
+
+  // Half an override would silently take the other id from the environment and
+  // offer the asset under a policy pair nobody asked for.
+  const override = body.policies
+  if (override && typeof override === "object") {
+    const hasAccess = typeof override.accessPolicyId === "string" && override.accessPolicyId !== ""
+    const hasContract =
+      typeof override.contractPolicyId === "string" && override.contractPolicyId !== ""
+    if (hasAccess !== hasContract) {
+      return Response.json(
+        {
+          error:
+            "A policy override needs both accessPolicyId and contractPolicyId — giving only one would mix it with the policy from the environment.",
+        },
+        { status: 400 }
+      )
+    }
+  }
+
+  const envConfig = resolveDataspaceConfig(
+    body.dataspace && typeof body.dataspace === "object" ? body.dataspace : undefined
+  )
+  if (!envConfig) {
+    return Response.json(
+      {
+        error:
+          "No dataspace connection. The API key is never read from the server environment — state it in the Data Space connection panel (or, for scripts, send it with the request). The connector may come from DATASPACE_CONNECTOR.",
+      },
+      { status: 503 }
+    )
+  }
+  const config = {
+    ...envConfig,
+    accessPolicyId: body.policies?.accessPolicyId || envConfig.accessPolicyId,
+    contractPolicyId: body.policies?.contractPolicyId || envConfig.contractPolicyId,
+  }
 
   const title =
     typeof instance["dcterms:title"] === "string"
@@ -81,7 +154,7 @@ export async function POST(request: Request) {
         {
           error: `Connector "${config.connector}" not found. Your API key has access to: ${
             available.join(", ") || "none"
-          }. Check DATASPACE_CONNECTOR in the server environment.`,
+          }. Check the connector name in the Data Space connection panel (or DATASPACE_CONNECTOR in the server environment).`,
         },
         { status: 400 }
       )
@@ -89,7 +162,7 @@ export async function POST(request: Request) {
     if (connector.storageType === "HttpData") {
       return Response.json(
         {
-          error: `Connector "${config.connector}" is an HttpData connector without file storage — the dataspace cannot store the JSON there. Create an S3-backed connector in the dataspace dashboard (Dashboard → Connectors → storage type Amazon S3) and set DATASPACE_CONNECTOR to its name.`,
+          error: `Connector "${config.connector}" is an HttpData connector without file storage — the dataspace cannot store the JSON there. Create an S3-backed connector in the dataspace dashboard (Dashboard → Connectors → storage type Amazon S3) and use its name as the connector.`,
         },
         { status: 400 }
       )
@@ -146,6 +219,7 @@ export async function POST(request: Request) {
       contractPolicyId: policies.contractPolicyId,
       policySource: policies.source,
       kitMetadata: describeKitMetadata(buildKitMetadata(instance)),
+      unknown: validation.unknown,
     })
   } catch (err) {
     return Response.json(

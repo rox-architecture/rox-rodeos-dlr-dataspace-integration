@@ -1,5 +1,6 @@
 {
     "_comment":"Union Type: An asset can be either a rodeos:Dataset OR a rodeos:Component OR a rodeos:Service (determined by rodeos:coreType)",
+    "_version":"1.1.0",
     "dcat:Resource":{
        "mandatory":{
           "dcterms:title":"xsd:text",
@@ -14,7 +15,10 @@
           "rodeos:coreType":"enum[Dataset, Component, Service]"
        },
        "optional":{
-          
+          "rodeos:trl":"xsd:integer",
+          "rodeos:relevantUseCases":"List[xsd:text]",
+          "rodeos:dependsOn":"List[xsd:text]",
+          "rodeos:producesAsset":"List[xsd:text]"
        },
        "instances":{
           "rodeos:Dataset":{
@@ -522,11 +526,18 @@
                 },
                 "rodeos:softwareComponent":{
                    "mandatory":{
-                      
+                      "rodeos:softwareAssetType":"enum[robotOperationSoftware, motionControlSoftware, perceptionVisionSoftware, manipulationPlanningSoftware, taskPlanningSoftware, simulationDigitalTwinSoftware, engineeringCommissioningSoftware, aiAnalyticsSoftware, integrationOrchestration]",
+                      "rodeos:capabilityClass":"enum[hardwareAccess, perception, manipulation, processExecution, humanRobotInteraction, foundationModel]"
                    },
                    "optional":{
                       "rodeos:modelParameters":"schema:quantitativeValue",
-                      "rodeos:softwareAssetType":"skos:concept"
+                      "rodeos:setupInputs":"List[xsd:text]",
+                      "rodeos:setupOutputs":"List[xsd:text]",
+                      "rodeos:runtimeInputs":"List[xsd:text]",
+                      "rodeos:runtimeOutputs":"List[xsd:text]",
+                      "rodeos:interfaceProtocols":"List[enum[REST, gRPC, OPC-UA, TCP-Socket, ROS2, MQTT, WebSocket, Python-API, CLI]]",
+                      "rodeos:requiredObjectKnowledge":"enum[none, category, cadModel, trainedModel]",
+                      "rodeos:supportsContinuousLearning":"xsd:boolean"
                    },
                    "instances":{
                       "rodeos:robotOperationSoftware":{
@@ -559,7 +570,7 @@
                       },
                       "rodeos:perceptionVisionSoftware":{
                          "mandatory":{
-                            "rodeos:perceptionVisionSoftwareType":"enum[2d3dVisionLibraries, objectDetection, slam]",
+                            "rodeos:perceptionVisionSoftwareType":"enum[2d3dVisionLibraries, objectDetection, instanceSegmentation, poseEstimation, graspPointDetection, slam, calibration]",
                             "rodeos:aasSubmodel":"xsd:anyUri"
                          },
                          "optional":{
@@ -568,7 +579,34 @@
                             "rodeos:accuracyMetrics":"xsd:text"
                          },
                          "defaultValues":{
-                            "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Technical_Data/2/0/IDTA%2002003_Sample_TechnicalData.json"
+                            "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Artificial%20Intelligence%20Deployment/1/0/IDTA%2002059-1-0_Template_AIDeployment.json"
+                         }
+                      },
+                      "rodeos:manipulationPlanningSoftware":{
+                         "mandatory":{
+                            "rodeos:manipulationPlanningSoftwareType":"enum[graspPlanning, pickPlanning, packPlanning, assemblySequencePlanning, forceControlledJoining]",
+                            "rodeos:aasSubmodel":"xsd:anyUri"
+                         },
+                         "optional":{
+                            "rodeos:supportedGripperTypes":"List[enum[MechanicalParallel, Vacuum, Magnetic, Soft, Adhesion]]",
+                            "rodeos:planningScope":"enum[local, global]",
+                            "rodeos:usesSimulation":"xsd:boolean"
+                         },
+                         "defaultValues":{
+                            "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Artificial%20Intelligence%20Deployment/1/0/IDTA%2002059-1-0_Template_AIDeployment.json"
+                         }
+                      },
+                      "rodeos:taskPlanningSoftware":{
+                         "mandatory":{
+                            "rodeos:taskPlanningSoftwareType":"enum[symbolicPlanning, llmBasedPlanning, hybridPlanning, schedulingOptimization]",
+                            "rodeos:aasSubmodel":"xsd:anyUri"
+                         },
+                         "optional":{
+                            "rodeos:inputModelFormats":"List[xsd:text]",
+                            "rodeos:supportedExecutionEngines":"List[xsd:text]"
+                         },
+                         "defaultValues":{
+                            "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Artificial%20Intelligence%20Deployment/1/0/IDTA%2002059-1-0_Template_AIDeployment.json"
                          }
                       },
                       "rodeos:simulationDigitalTwinSoftware":{
@@ -585,16 +623,31 @@
                             "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Technical_Data/2/0/IDTA%2002003_Sample_TechnicalData.json"
                          }
                       },
-                      "rodeos:aiAnalyticsSoftware":{
+                      "rodeos:engineeringCommissioningSoftware":{
                          "mandatory":{
-                            "rodeos:aiAnalyticsSoftwareType":"enum[mlModel, dataAnalyticsPipeline, reinforcementLearning]",
+                            "rodeos:engineeringCommissioningSoftwareType":"enum[reachabilityAnalysis, cellLayoutPlanning, riskAssessment, safetyConfiguration, teaching]",
                             "rodeos:aasSubmodel":"xsd:anyUri"
                          },
                          "optional":{
-                            "rodeos:modelArchitecture":"xsd:text"
+                            "rodeos:inputModelFormats":"List[xsd:text]",
+                            "rodeos:standardsReferenced":"List[xsd:text]"
                          },
                          "defaultValues":{
                             "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Technical_Data/2/0/IDTA%2002003_Sample_TechnicalData.json"
+                         }
+                      },
+                      "rodeos:aiAnalyticsSoftware":{
+                         "mandatory":{
+                            "rodeos:aiAnalyticsSoftwareType":"enum[mlModel, foundationModel, llmApplication, uncertaintyQuantification, dataAnalyticsPipeline, dataLabeling, reinforcementLearning]",
+                            "rodeos:aasSubmodel":"xsd:anyUri"
+                         },
+                         "optional":{
+                            "rodeos:modelArchitecture":"xsd:text",
+                            "rodeos:mlFrameworks":"List[xsd:text]",
+                            "rodeos:accuracyMetrics":"xsd:text"
+                         },
+                         "defaultValues":{
+                            "rodeos:aasSubmodel":"https://raw.githubusercontent.com/admin-shell-io/submodel-templates/refs/heads/main/published/Artificial%20Intelligence%20Deployment/1/0/IDTA%2002059-1-0_Template_AIDeployment.json"
                          }
                       },
                       "rodeos:integrationOrchestration":{

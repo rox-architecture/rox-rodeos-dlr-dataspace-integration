@@ -9,6 +9,7 @@ import {
   PackageIcon,
   SparklesIcon,
   TriangleAlertIcon,
+  UploadIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -24,6 +25,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
+import { type ApplySummary } from "@/components/rodeos/model-form"
+import { useDataspaceConnection } from "@/components/rodeos/dataspace-connection"
 import { buildKitMetadata, describeKitMetadata } from "@/lib/kit-metadata"
 
 const DATASPACE_DASHBOARD_URL =
@@ -41,16 +44,20 @@ export function JsonPreview({
   missingMandatory,
   suggested,
   invalidCount,
+  onImport,
 }: {
   data: Record<string, unknown>
   missingMandatory: string[]
   suggested: string[]
   invalidCount: number
+  onImport: (instance: Record<string, unknown>) => ApplySummary
 }) {
   const [copied, setCopied] = React.useState(false)
-  const [dataspaceConfigured, setDataspaceConfigured] = React.useState<
-    boolean | null
-  >(null)
+  const {
+    connection,
+    complete: connectionComplete,
+    ready: connectionReady,
+  } = useDataspaceConnection()
   const [registering, setRegistering] = React.useState(false)
   const [registerError, setRegisterError] = React.useState<string | null>(null)
   const [lastRegistration, setLastRegistration] = React.useState<
@@ -63,17 +70,37 @@ export function JsonPreview({
   // What a KIT builder will read from the registered asset.
   const kit = React.useMemo(() => buildKitMetadata(data), [data])
 
-  React.useEffect(() => {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((cfg) => setDataspaceConfigured(Boolean(cfg.dataspaceConfigured)))
-      .catch(() => setDataspaceConfigured(false))
-  }, [])
-
   // The success state is only shown while the instance is unchanged since
   // registration — editing the form invalidates it.
   const registered =
     lastRegistration && lastRegistration.json === json ? lastRegistration : null
+
+  const fileInput = React.useRef<HTMLInputElement>(null)
+
+  /** Read a downloaded instance back into the form. */
+  const importFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // Cleared right away so picking the same file twice fires onChange again.
+    event.target.value = ""
+    if (!file) return
+    try {
+      const parsed: unknown = JSON.parse(await file.text())
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("The file does not contain a JSON object")
+      }
+      const summary = onImport(parsed as Record<string, unknown>)
+      toast.success(`Imported ${summary.applied.length} fields from ${file.name}`)
+      if (summary.skipped.length > 0) {
+        toast.warning(
+          `Ignored ${summary.skipped.length} unknown field${
+            summary.skipped.length === 1 ? "" : "s"
+          }: ${summary.skipped.join(", ")}`
+        )
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const copy = async () => {
     await navigator.clipboard.writeText(json)
@@ -101,7 +128,7 @@ export function JsonPreview({
       const res = await fetch("/api/dataspace/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instance: data }),
+        body: JSON.stringify({ instance: data, dataspace: connection }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? `Registration failed (${res.status})`)
@@ -149,7 +176,22 @@ export function JsonPreview({
             </span>
           )}
         </CardDescription>
-        <CardAction>
+        <CardAction className="flex gap-1">
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={importFile}
+          />
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => fileInput.current?.click()}
+            title="Import instance JSON"
+          >
+            <UploadIcon />
+          </Button>
           <Button variant="outline" size="icon-sm" onClick={copy} title="Copy JSON">
             {copied ? <CheckIcon className="text-(--rox-teal)" /> : <CopyIcon />}
           </Button>
@@ -202,12 +244,17 @@ export function JsonPreview({
           size="lg"
           onClick={register}
           disabled={
-            !hasContent || !complete || registering || dataspaceConfigured === false
+            !hasContent ||
+            !complete ||
+            registering ||
+            (connectionReady && !connectionComplete)
           }
           title={
             !complete
               ? "All mandatory fields must be valid before registering"
-              : undefined
+              : connectionReady && !connectionComplete
+                ? "Complete the Data Space connection above first"
+                : undefined
           }
         >
           {registering ? (
@@ -224,12 +271,10 @@ export function JsonPreview({
           </p>
         )}
 
-        {dataspaceConfigured === false && (
+        {connectionReady && !connectionComplete && (
           <p className="text-xs text-muted-foreground">
-            Dataspace access is not configured — set{" "}
-            <code className="font-mono">DATASPACE_API_KEY</code> and{" "}
-            <code className="font-mono">DATASPACE_CONNECTOR</code> in the
-            server environment.
+            Fill in the <span className="font-medium">Data Space connection</span>{" "}
+            above — API key and connector decide where this asset is registered.
           </p>
         )}
 

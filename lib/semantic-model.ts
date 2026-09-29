@@ -5,8 +5,9 @@ import rawOperationalModel from "@/operational_model.json"
  * The models (semantic_model.json and operational_model.json at the
  * repository root) are the single source of truth for every form the app
  * renders. Nothing about the hierarchies or the fields is hard-coded here
- * beyond the auto-selection rules the models themselves encode via enum
- * fields (rodeos:coreType, rodeos:componentType, rodeos:operationalType).
+ * beyond the auto-selection rules the models themselves encode via the enum
+ * fields listed in `Axis.autoSelectors` (e.g. rodeos:coreType,
+ * rodeos:softwareAssetType).
  *
  * Two orthogonal axes describe an asset:
  *
@@ -61,7 +62,11 @@ export interface Axis {
 export const SEMANTIC_AXIS: Axis = {
   id: "semantic",
   root: getResourceNode(),
-  autoSelectors: ["rodeos:coreType", "rodeos:componentType"],
+  autoSelectors: [
+    "rodeos:coreType",
+    "rodeos:componentType",
+    "rodeos:softwareAssetType",
+  ],
 }
 
 export const OPERATIONAL_AXIS: Axis = {
@@ -484,6 +489,12 @@ export function validateField(fieldType: string, raw: unknown): ValidationResult
     return { ok: true, value: out.length ? out : undefined }
   }
 
+  // Non-list scalars take one primitive. An array or object would otherwise
+  // be stringified ("Component" for ["Component"]) and pass the enum check
+  // although the hierarchy cannot descend on it.
+  if (raw !== null && typeof raw === "object") {
+    return { ok: false, error: "Expected a single value, not a list or object" }
+  }
   return validateScalar(parsed, String(raw ?? ""))
 }
 
@@ -516,13 +527,13 @@ export interface Level {
 }
 
 /**
- * A field enum whose value determines the child instance automatically,
- * mirroring the reference implementation: `rodeos:coreType` on the root
- * resource and `rodeos:componentType` on rodeos:Component map their value
- * "X" to the instance key "rodeos:X". The operational axis uses the same
- * rule via `rodeos:operationalType`.
+ * The field of `node` whose enum value determines the child instance
+ * automatically: a value "X" selects the instance key "rodeos:X". Which
+ * fields qualify is listed in `Axis.autoSelectors` (rodeos:coreType on the
+ * root resource, rodeos:softwareAssetType on rodeos:softwareComponent, …);
+ * adding a selector means adding its field name to that array, nothing else.
  */
-function autoSelectorField(node: ModelNode, autoSelectors: string[]): string | null {
+export function autoSelectorField(node: ModelNode, autoSelectors: string[]): string | null {
   const fields = { ...node.mandatory, ...node.optional }
   for (const name of autoSelectors) {
     if (name in fields) return name
@@ -669,4 +680,35 @@ export function sanitizePath(
     }
   }
   return valid
+}
+
+/** Form state that reproduces a hierarchy path (see autoSelectorValuesForPath). */
+export interface PathState {
+  values: Record<string, string>
+  selections: Record<string, string>
+}
+
+/**
+ * Translate a hierarchy path into the form state that produces it: values
+ * for the auto-selector enums (`Axis.autoSelectors`) and manual selections
+ * for levels without one. Inverse of computeLevels, used when an LLM result
+ * or an imported instance names a path.
+ */
+export function autoSelectorValuesForPath(
+  path: string[],
+  axis: Axis = SEMANTIC_AXIS
+): PathState {
+  const values: Record<string, string> = {}
+  const selections: Record<string, string> = {}
+  let node: ModelNode | undefined = axis.root
+  const walked: string[] = []
+  for (const key of path) {
+    if (!node?.instances || !(key in node.instances)) break
+    const auto = autoSelectorField(node, axis.autoSelectors)
+    if (auto) values[auto] = key.replace(/^rodeos:/, "")
+    else selections[pathKey(walked, axis.id)] = key
+    walked.push(key)
+    node = node.instances[key]
+  }
+  return { values, selections }
 }

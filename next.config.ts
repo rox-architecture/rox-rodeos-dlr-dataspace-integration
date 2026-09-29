@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
     "/*": [
       "./RODEOS-main/**/*",
       "./design/**/*",
+      "./building_blocks/**/*",
+      "./docs/**/*",
+      "./tests/**/*",
+      "./vitest.config.*",
       "./data/**/*",
       "./.next/cache/**/*",
       "./node_modules/typescript/**/*",

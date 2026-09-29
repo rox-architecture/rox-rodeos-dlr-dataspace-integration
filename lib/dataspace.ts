@@ -21,13 +21,41 @@ export interface DataspaceConfig {
   contractPolicyId?: string
 }
 
-export function getDataspaceConfig(): DataspaceConfig | null {
-  const apiKey = process.env.DATASPACE_API_KEY
-  const connector = process.env.DATASPACE_CONNECTOR
+export const DEFAULT_DATASPACE_API_URL = "https://vision-x-api.base-x-ecosystem.org"
+
+/** Connection details a single caller brings along instead of using the server's. */
+export interface DataspaceOverrides {
+  apiUrl?: string
+  apiKey?: string
+  connector?: string
+}
+
+const trimmed = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined
+  const clean = value.trim()
+  return clean === "" ? undefined : clean
+}
+
+/**
+ * Build the connection to use for one call.
+ *
+ * The API key is never taken from the server environment: it says *as whom*
+ * an asset is registered, so every caller states their own and a deployment
+ * cannot silently register on the operator's behalf. The connector and the URL
+ * only say *where*, so those still fall back to the environment as defaults.
+ */
+export function resolveDataspaceConfig(
+  overrides?: DataspaceOverrides
+): DataspaceConfig | null {
+  const apiKey = trimmed(overrides?.apiKey)
+  const connector =
+    trimmed(overrides?.connector) ?? trimmed(process.env.DATASPACE_CONNECTOR)
   if (!apiKey || !connector) return null
   return {
     apiUrl: (
-      process.env.DATASPACE_API_URL || "https://vision-x-api.base-x-ecosystem.org"
+      trimmed(overrides?.apiUrl) ??
+      trimmed(process.env.DATASPACE_API_URL) ??
+      DEFAULT_DATASPACE_API_URL
     ).replace(/\/$/, ""),
     apiKey,
     connector,
@@ -35,6 +63,7 @@ export function getDataspaceConfig(): DataspaceConfig | null {
     contractPolicyId: process.env.DATASPACE_CONTRACT_POLICY_ID || undefined,
   }
 }
+
 
 async function api(
   config: DataspaceConfig,
