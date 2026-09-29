@@ -116,11 +116,26 @@ describe("POST /api/dataspace/register", () => {
     expect(body.error).toMatch(/both accessPolicyId and contractPolicyId/)
   })
 
-  it("reports missing configuration only after validation passed", async () => {
+  it("reports the missing connection only after validation passed", async () => {
     const res = await post({ instance: complete })
     expect(res.status).toBe(503)
     const body = await res.json()
-    expect(body.error).toMatch(/not configured/)
+    expect(body.error).toMatch(/API key/)
+  })
+
+  it("refuses a valid instance that brings no API key, however complete the environment", async () => {
+    process.env.DATASPACE_API_KEY = "env-key"
+    process.env.DATASPACE_CONNECTOR = "env-connector"
+    try {
+      const res = await post({
+        instance: complete,
+        dataspace: { connector: "env-connector" },
+      })
+      expect(res.status).toBe(503)
+    } finally {
+      delete process.env.DATASPACE_API_KEY
+      delete process.env.DATASPACE_CONNECTOR
+    }
   })
 
   it("still rejects a missing instance with 400", async () => {

@@ -3,7 +3,8 @@
  * Register instance documents through a running RODEOS app.
  *
  *   node scripts/register-instances.mjs [--dry-run] [--base=http://localhost:3000]
- *        [--policy=<id> | --access-policy=<id> --contract-policy=<id>] <instance.json> [...]
+ *        [--policy=<id> | --access-policy=<id> --contract-policy=<id>]
+ *        [--api-key=<key>] [--connector=<name>] [--api-url=<url>] <instance.json> [...]
  *
  * --dry-run          validate only (works without dataspace configuration)
  * --policy           use this policy id as both access and contract policy
@@ -14,6 +15,10 @@
  *
  * Files still containing the token PLACEHOLDER are validated but never
  * registered — the values have to be replaced first.
+ *
+ * The app never reads the dataspace API key from its own environment, so this
+ * script reads DATASPACE_API_KEY (from the environment or .env) and sends it
+ * with each call. Without it only --dry-run works.
  */
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"
@@ -42,6 +47,30 @@ if (files.length === 0) {
   console.error(
     "usage: node scripts/register-instances.mjs [--dry-run] [--base=URL] " +
       "[--policy=ID | --access-policy=ID --contract-policy=ID] <instance.json>..."
+  )
+  process.exit(2)
+}
+
+// Minimal .env reader — the app uses Next.js's own loader, scripts do not.
+const env = {}
+try {
+  for (const line of (await readFile(".env", "utf8")).split("\n")) {
+    const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line)
+    if (m) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "")
+  }
+} catch {
+  /* no .env — fall through to the process environment */
+}
+const pick = (name) => process.env[name]?.trim() || env[name]?.trim() || undefined
+const dataspace = {
+  apiKey: flag("api-key") ?? pick("DATASPACE_API_KEY"),
+  connector: flag("connector") ?? pick("DATASPACE_CONNECTOR"),
+  apiUrl: flag("api-url") ?? pick("DATASPACE_API_URL"),
+}
+
+if (!dryRun && !dataspace.apiKey) {
+  console.error(
+    "no dataspace API key — set DATASPACE_API_KEY (environment or .env) or pass --api-key=<key>"
   )
   process.exit(2)
 }
@@ -75,7 +104,7 @@ for (const file of files) {
     continue
   }
 
-  const body = { instance, dryRun }
+  const body = { instance, dryRun, dataspace }
   if (accessPolicy)
     body.policies = {
       accessPolicyId: accessPolicy,

@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "Dataspace access is not configured. Enter API key and connector in the Data Space connection panel, or set DATASPACE_API_KEY and DATASPACE_CONNECTOR in the server environment (.env file, or the container's environment).",
+          "No dataspace connection. The API key is never read from the server environment — state it in the Data Space connection panel (or, for scripts, send it with the request). The connector may come from DATASPACE_CONNECTOR.",
       },
       { status: 503 }
     )

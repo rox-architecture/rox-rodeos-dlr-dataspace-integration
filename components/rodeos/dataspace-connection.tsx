@@ -29,8 +29,6 @@ export interface DataspaceConnection {
 interface ServerDefaults {
   apiUrl: string
   connector: string
-  /** Whether the server environment holds a key — never the key itself. */
-  hasApiKey: boolean
 }
 
 interface ContextValue {
@@ -40,7 +38,6 @@ interface ContextValue {
   complete: boolean
   /** False until /api/config answered; avoids a red flash on first paint. */
   ready: boolean
-  serverHasApiKey: boolean
   set: (field: keyof DataspaceConnection, value: string) => void
 }
 
@@ -88,7 +85,6 @@ export function DataspaceConnectionProvider({
         setDefaults({
           apiUrl: cfg.dataspace?.apiUrl ?? "",
           connector: cfg.dataspace?.connector ?? "",
-          hasApiKey: Boolean(cfg.dataspace?.hasApiKey),
         })
       })
     return () => {
@@ -114,9 +110,9 @@ export function DataspaceConnectionProvider({
   )
 
   const value = React.useMemo(() => {
-    // An entry wins over the server default; the key has no default, because
-    // handing the operator's key to every visitor is exactly what a deployment
-    // must not do.
+    // An entry wins over the server default. The key has no default at all:
+    // it is always stated per session, so the same flow can be tested locally
+    // that a deployed instance will use.
     const connection: DataspaceConnection = {
       apiUrl: entered.apiUrl ?? defaults?.apiUrl ?? "",
       apiKey: entered.apiKey ?? "",
@@ -125,14 +121,8 @@ export function DataspaceConnectionProvider({
     const complete =
       connection.apiUrl.trim() !== "" &&
       connection.connector.trim() !== "" &&
-      (connection.apiKey.trim() !== "" || Boolean(defaults?.hasApiKey))
-    return {
-      connection,
-      complete,
-      ready: defaults !== null,
-      serverHasApiKey: Boolean(defaults?.hasApiKey),
-      set,
-    }
+      connection.apiKey.trim() !== ""
+    return { connection, complete, ready: defaults !== null, set }
   }, [entered, defaults, set])
 
   return <Context.Provider value={value}>{children}</Context.Provider>
@@ -144,8 +134,7 @@ export function DataspaceConnectionProvider({
  * description, but it decides whether registering works at all.
  */
 export function DataspaceConnectionCard() {
-  const { connection, complete, ready, serverHasApiKey, set } =
-    useDataspaceConnection()
+  const { connection, complete, ready, set } = useDataspaceConnection()
   // Open by default: these three decide where the asset ends up, so they are
   // shown rather than hidden behind a disclosure. Collapsing is allowed only
   // once they are actually answered.
@@ -159,7 +148,7 @@ export function DataspaceConnectionCard() {
     <Card
       className={
         ready && !complete
-          ? "border-(--rox-gold)/60 bg-(--rox-gold)/5 ring-1 ring-(--rox-gold)/25"
+          ? "border-destructive/60 bg-destructive/5 ring-1 ring-destructive/25"
           : "border-(--rox-teal)/40 bg-(--rox-teal)/5"
       }
     >
@@ -176,12 +165,14 @@ export function DataspaceConnectionCard() {
               <CheckIcon className="size-3.5" />
               {connection.connector.trim()} ·{" "}
               {connection.apiUrl.replace(/^https?:\/\//, "")} ·{" "}
-              {connection.apiKey.trim() ? "session key" : "key from server"}
+              session key
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-(--rox-gold)">
+            <span className="inline-flex items-center gap-1 font-medium text-destructive">
               <TriangleAlertIcon className="size-3.5" />
-              Required before an asset can be registered
+              {connection.apiKey.trim() === ""
+                ? "API key required — enter your own to register"
+                : "Required before an asset can be registered"}
             </span>
           )}
         </CardDescription>
@@ -214,15 +205,11 @@ export function DataspaceConnectionCard() {
           <Field
             id="dataspace-api-key"
             label="API key"
-            hint={
-              serverHasApiKey
-                ? "Set in the server environment — enter one to use your own instead"
-                : "Your personal bearer token for the dataspace API"
-            }
+            hint="Your personal bearer token — never taken from the server"
             value={connection.apiKey}
-            invalid={!serverHasApiKey && missing(connection.apiKey)}
+            invalid={missing(connection.apiKey)}
             onChange={(v) => set("apiKey", v)}
-            placeholder={serverHasApiKey ? "•••••••• from server environment" : "Paste your key"}
+            placeholder="Paste your key"
             type="password"
             autoComplete="off"
           />
@@ -237,7 +224,8 @@ export function DataspaceConnectionCard() {
           />
           <p className="text-xs leading-relaxed text-muted-foreground">
             Kept for this browser session only — never written to the server.
-            Leave a field empty to fall back to the server environment.
+            URL and connector fall back to the server environment when left
+            empty; the key never does.
           </p>
         </CardContent>
       )}

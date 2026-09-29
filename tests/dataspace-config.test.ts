@@ -24,34 +24,32 @@ describe("resolveDataspaceConfig", () => {
     }
   })
 
-  it("uses the server environment when the caller brings nothing", () => {
-    process.env.DATASPACE_API_KEY = "env-key"
+  it("takes connector and URL from the environment as defaults", () => {
     process.env.DATASPACE_CONNECTOR = "env-connector"
     process.env.DATASPACE_API_URL = "https://env.example.org"
-    expect(resolveDataspaceConfig()).toMatchObject({
-      apiKey: "env-key",
+    expect(resolveDataspaceConfig({ apiKey: "own-key" })).toMatchObject({
+      apiKey: "own-key",
       connector: "env-connector",
       apiUrl: "https://env.example.org",
     })
   })
 
-  it("lets the caller override field by field", () => {
+  it("never takes the API key from the environment", () => {
     process.env.DATASPACE_API_KEY = "env-key"
     process.env.DATASPACE_CONNECTOR = "env-connector"
-    const config = resolveDataspaceConfig({ connector: "own-connector" })
-    // The key still comes from the environment — only the named field moves.
-    expect(config).toMatchObject({
-      apiKey: "env-key",
-      connector: "own-connector",
-    })
+    // A caller without a key gets nothing, however complete the environment is.
+    expect(resolveDataspaceConfig()).toBeNull()
+    expect(resolveDataspaceConfig({ connector: "own-connector" })).toBeNull()
+    expect(resolveDataspaceConfig({ apiKey: "own-key" })?.apiKey).toBe("own-key")
   })
 
   it("treats an empty or blank field as 'not given'", () => {
     process.env.DATASPACE_API_KEY = "env-key"
     process.env.DATASPACE_CONNECTOR = "env-connector"
+    expect(resolveDataspaceConfig({ apiKey: "   " })).toBeNull()
     expect(
-      resolveDataspaceConfig({ apiKey: "", connector: "   " })
-    ).toMatchObject({ apiKey: "env-key", connector: "env-connector" })
+      resolveDataspaceConfig({ apiKey: "own-key", connector: "   " })
+    ).toMatchObject({ apiKey: "own-key", connector: "env-connector" })
   })
 
   it("works with no environment at all, from the caller alone", () => {
@@ -64,7 +62,7 @@ describe("resolveDataspaceConfig", () => {
     })
   })
 
-  it("is null while key or connector is missing on both sides", () => {
+  it("is null while key or connector is missing", () => {
     expect(resolveDataspaceConfig()).toBeNull()
     expect(resolveDataspaceConfig({ apiKey: "own-key" })).toBeNull()
     expect(resolveDataspaceConfig({ connector: "own-connector" })).toBeNull()

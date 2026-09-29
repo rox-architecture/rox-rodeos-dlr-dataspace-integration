@@ -37,15 +37,17 @@ const trimmed = (value: unknown): string | undefined => {
 }
 
 /**
- * Build the connection to use for one call. Per-request details win over the
- * server environment field by field, so a deployment can serve users who each
- * bring their own connector while a local run with a filled .env needs no
- * input at all.
+ * Build the connection to use for one call.
+ *
+ * The API key is never taken from the server environment: it says *as whom*
+ * an asset is registered, so every caller states their own and a deployment
+ * cannot silently register on the operator's behalf. The connector and the URL
+ * only say *where*, so those still fall back to the environment as defaults.
  */
 export function resolveDataspaceConfig(
   overrides?: DataspaceOverrides
 ): DataspaceConfig | null {
-  const apiKey = trimmed(overrides?.apiKey) ?? trimmed(process.env.DATASPACE_API_KEY)
+  const apiKey = trimmed(overrides?.apiKey)
   const connector =
     trimmed(overrides?.connector) ?? trimmed(process.env.DATASPACE_CONNECTOR)
   if (!apiKey || !connector) return null
@@ -62,10 +64,6 @@ export function resolveDataspaceConfig(
   }
 }
 
-/** The connection the server environment alone provides, if it is complete. */
-export function getDataspaceConfig(): DataspaceConfig | null {
-  return resolveDataspaceConfig()
-}
 
 async function api(
   config: DataspaceConfig,

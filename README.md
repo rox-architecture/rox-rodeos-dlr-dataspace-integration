@@ -272,12 +272,20 @@ operated by the DLR Institute for AI Safety and Security):
    visible in the federated catalog.
 
 Where an asset gets registered is set in the **Data Space connection** panel at
-the top of the right column: API URL, API key and connector. On a local run
-these are prefilled from the server environment and nothing has to be entered.
-On a deployment each visitor brings their own — the fields are kept for that
-browser session only, are sent with the registration request, and each one
-falls back to the server environment when left empty. The server never hands
-out its own API key; it only reports that one is configured.
+the top of the right column: API URL, API key and connector. The panel is open
+until all three are answered, and marks itself red while one is missing —
+registering stays locked until then.
+
+API URL and connector are prefilled from `DATASPACE_API_URL` and
+`DATASPACE_CONNECTOR`, so they usually need no attention. **The API key is
+never read from the server environment**, neither for the UI nor for the API:
+it says *as whom* an asset is registered, so every session states its own and a
+deployment cannot register on the operator's behalf. Entries are kept for that
+browser session only and travel with the registration request.
+
+`scripts/register-instances.mjs` therefore reads `DATASPACE_API_KEY` from the
+environment or `.env` itself and sends it along; `--api-key`, `--connector` and
+`--api-url` override that per call.
 
 The API validates every instance against both models before it touches the
 dataspace and answers `422` with the missing and invalid fields otherwise.
